@@ -2,7 +2,8 @@ import "server-only";
 import { HOME, suggestCategory, type Category } from "./config";
 import type { Photo, RoadSplit } from "./types";
 
-const UA = "list-it-ride-planner/1.0 (small private riding group app)";
+// Wikimedia and Nominatim want a UA that says who we are and how to reach us.
+const UA = "list-it/1.0 (https://list-it-kappa.vercel.app; private ride planner for a riding group)";
 const timeout = (ms: number) => AbortSignal.timeout(ms);
 
 export type Place = {
@@ -498,15 +499,19 @@ export async function photosNear(place: { name: string; lat: number; lng: number
       "https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=geosearch" +
       `&ggscoord=${place.lat}%7C${place.lng}&ggsradius=10000&ggslimit=40&ggsnamespace=6` +
       "&prop=imageinfo&iiprop=url%7Cmime%7Cextmetadata%7Csize&iiurlwidth=900";
-    type Resp = { error?: unknown; query?: { pages?: Record<string, CommonsPage> } };
-    const get = async () =>
-      (await (await fetch(url, { headers: { "User-Agent": UA }, signal: timeout(8000) })).json()) as Resp;
+    type Resp = { error?: { code?: string; info?: string }; query?: { pages?: Record<string, CommonsPage> } };
+    const get = async () => {
+      const res = await fetch(url, { headers: { "User-Agent": UA, "Api-User-Agent": UA }, signal: timeout(8000) });
+      if (!res.ok) return { error: { code: `http-${res.status}`, info: (await res.text()).slice(0, 200) } } as Resp;
+      return (await res.json()) as Resp;
+    };
     let json = await get();
     // Commons search sometimes answers "too busy"; one retry usually clears it.
     if (json.error) {
       await new Promise((r) => setTimeout(r, 1200));
       json = await get();
     }
+    if (json.error) console.warn("[photos] Commons said no:", json.error.code, json.error.info);
     const words = place.name
       .toLowerCase()
       .split(/[^a-z]+/)
@@ -538,7 +543,8 @@ export async function photosNear(place: { name: string; lat: number; lng: number
       .sort((a, b) => b.score - a.score)
       .slice(0, 6)
       .map((x) => x.photo);
-  } catch {
+  } catch (e) {
+    console.warn("[photos] lookup failed:", e instanceof Error ? e.message : e);
     return [];
   }
 }
