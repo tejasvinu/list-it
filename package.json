@@ -1,0 +1,38 @@
+{
+  "name": "list-it",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "seed": "tsx --conditions=react-server scripts/seed.mts",
+    "typecheck": "tsc --noEmit",
+    "reset": "tsx scripts/reset.mts"
+  },
+  "dependencies": {
+    "@vercel/functions": "^3.10.4",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.63.0",
+    "mongodb": "^7.7.0",
+    "motion": "^14.7.1",
+    "next": "16.4.3",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/leaflet": "^1.9.22",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "dotenv": "^18.0.9",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.3",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.15",
+    "typescript": "^5"
+  }
+}

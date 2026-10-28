@@ -1,0 +1,167 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #09090b;
+  --surface: #131316;
+  --surface-2: #1b1b20;
+  --surface-3: #26262d;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --text: #f6f5f4;
+  --muted: #a3a3ad;
+  --faint: #6f6f7a;
+  --accent: #ff7a1a;
+  --accent-2: #ffb547;
+  --danger: #f43f5e;
+  --short: #2dd4bf;
+  --day: #fbbf24;
+  --multi: #c084fc;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-danger: var(--danger);
+  --color-short: var(--short);
+  --color-day: var(--day);
+  --color-multi: var(--multi);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+}
+
+html {
+  background: var(--bg);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body), system-ui, sans-serif;
+  overscroll-behavior-y: none;
+}
+
+/* Ambient glow behind the phone-width column on wide screens */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 40rem at 50% -10%, rgba(255, 122, 26, 0.09), transparent 60%),
+    radial-gradient(40rem 30rem at 100% 100%, rgba(192, 132, 252, 0.05), transparent 60%);
+  z-index: 0;
+}
+
+::selection {
+  background: rgba(255, 122, 26, 0.35);
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+}
+
+/* Route art drawing in */
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.route-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: draw 1.6s cubic-bezier(0.65, 0, 0.35, 1) 0.1s forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-draw {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes ping-soft {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+}
+.ping-soft {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ping-soft 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+  animation: shimmer 1.4s infinite;
+}
+
+/* Leaflet, dressed for the dark theme */
+.leaflet-container {
+  background: #0d0d10 !important;
+  font-family: var(--font-body), system-ui, sans-serif !important;
+}
+.leaflet-control-attribution {
+  background: rgba(9, 9, 11, 0.7) !important;
+  color: var(--faint) !important;
+  font-size: 9px !important;
+}
+.leaflet-control-attribution a {
+  color: var(--muted) !important;
+}
+.leaflet-bar a {
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+  border-color: var(--line) !important;
+}
+.dark-tiles {
+  filter: invert(1) hue-rotate(180deg) brightness(0.82) contrast(0.92) saturate(0.35);
+}
+.leaflet-div-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.6;
+}
