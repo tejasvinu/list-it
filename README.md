@@ -33,7 +33,7 @@ Collections and indexes are created on first connect, so there is no migration s
 
 Open `http://localhost:3000/admin`, enter `ADMIN_SECRET`, create a crew and copy its link.
 
-Other scripts: `npm run reset` drops the database, and `npx tsx scripts/dev-session.mts <name>` prints a rider's session cookie for testing pages with curl.
+Other scripts: `npm run reset` drops the database (it refuses a non-local one unless you pass `-- --force`), and `npx tsx scripts/dev-session.mts <name>` prints a rider's session cookie for testing pages with curl.
 
 ## Deploy (Vercel + MongoDB Atlas, both free tiers)
 
