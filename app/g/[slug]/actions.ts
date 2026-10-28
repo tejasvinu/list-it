@@ -212,14 +212,17 @@ function validate(input: DestinationInput) {
         .filter(Boolean),
     ),
   ].slice(0, 12);
+  // Commons serves thumbnails from more than one host (upload., thumb.), so allow any wikimedia.org one.
+  const fromWikimedia = (u: unknown) => {
+    try {
+      const url = new URL(String(u));
+      return url.protocol === "https:" && url.hostname.endsWith(".wikimedia.org");
+    } catch {
+      return false;
+    }
+  };
   const photos = (input.photos ?? [])
-    .filter(
-      (p) =>
-        typeof p.thumb === "string" &&
-        p.thumb.startsWith("https://upload.wikimedia.org/") &&
-        typeof p.page === "string" &&
-        p.page.startsWith("https://commons.wikimedia.org/"),
-    )
+    .filter((p) => fromWikimedia(p.thumb) && fromWikimedia(p.page))
     .slice(0, 6)
     .map((p) => ({
       thumb: p.thumb,
