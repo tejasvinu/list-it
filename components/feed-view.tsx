@@ -64,7 +64,8 @@ export function FeedView({
   const shown = useMemo(() => {
     let xs = items.filter((d) => {
       if (filter === "all") return true;
-      if (filter === "done" || filter === "hailmary") return d.status === filter;
+      if (filter === "done") return d.riddenBy.length > 0;
+      if (filter === "hailmary") return d.status === filter;
       return d.category === filter;
     });
     if (sort === "hot") xs = [...xs].sort((a, b) => heat(b) - heat(a));
@@ -72,8 +73,8 @@ export function FeedView({
     return xs;
   }, [items, filter, sort]);
 
-  const ridden = items.filter((d) => d.status === "done");
-  const dreamKm = items.filter((d) => d.status !== "done").reduce((s, d) => s + d.distanceKm, 0);
+  const ridden = items.filter((d) => d.riddenBy.length > 0);
+  const dreamKm = items.filter((d) => !d.riddenBy.length).reduce((s, d) => s + d.distanceKm, 0);
   const hoursLeft = Math.max(0, Math.round((closesAt - now) / 3600000));
 
   return (
@@ -143,7 +144,7 @@ export function FeedView({
                   href={`/g/${slug}/d/${d.id}`}
                   className="relative h-[150px] w-[220px] shrink-0 snap-start overflow-hidden rounded-2xl border border-line"
                 >
-                  <RouteArt id={`up-${d.id}`} route={d.route} category={d.category} width={220} height={150} labels={false} className="absolute inset-0 h-full w-full" />
+                  <RouteArt id={`up-${d.id}`} route={d.route} category={d.category} width={220} height={150} labels={false} map className="absolute inset-0 h-full w-full" />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
                   <span className="absolute left-2.5 top-2.5 rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-black">
                     {days === 0 ? "Today!" : days === 1 ? "Tomorrow" : `In ${days} days`}

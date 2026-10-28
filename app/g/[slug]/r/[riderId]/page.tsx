@@ -12,10 +12,9 @@ export default async function RiderPage({ params }: PageProps<"/g/[slug]/r/[ride
 
   const feed = await getFeed(ctx);
   const added = feed.filter((d) => d.riderId === rider.id);
-  const imIn = feed.filter((d) => d.interested.some((r) => r.id === rider.id) && d.status !== "done");
-  const ridden = feed.filter(
-    (d) => d.status === "done" && (d.riderId === rider.id || d.interested.some((r) => r.id === rider.id)),
-  );
+  const rode = (d: (typeof feed)[number]) => d.riddenBy.some((r) => r.rider.id === rider.id);
+  const imIn = feed.filter((d) => d.interested.some((r) => r.id === rider.id) && !rode(d));
+  const ridden = feed.filter(rode);
 
   return (
     <ProfileView

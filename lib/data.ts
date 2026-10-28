@@ -41,6 +41,9 @@ export type FeedItem = Destination & {
   myReaction: string | null;
   interested: RiderLite[];
   imIn: boolean;
+  /** Riders who have ridden it, most recent first */
+  riddenBy: { rider: RiderLite; date: string | null }[];
+  iRode: boolean;
   commentCount: number;
   stopCount: number;
 };
@@ -52,9 +55,10 @@ async function hydrate(rows: Destination[], groupRiders: RiderLite[], viewerId: 
   const who = (id: string) => byId.get(id) ?? ghost;
   const c = await cols();
 
-  const [rx, ins, cc, sc] = await Promise.all([
+  const [rx, ins, rd, cc, sc] = await Promise.all([
     c.reactions.find({ destinationId: { $in: ids } }, { projection: { _id: 0 } }).sort({ createdAt: 1 }).toArray(),
     c.interests.find({ destinationId: { $in: ids } }, { projection: { _id: 0 } }).sort({ createdAt: 1 }).toArray(),
+    c.rides.find({ destinationId: { $in: ids } }, { projection: { _id: 0 } }).sort({ date: -1, createdAt: -1 }).toArray(),
     c.comments
       .aggregate<{ _id: string; n: number }>([
         { $match: { destinationId: { $in: ids }, deletedAt: null } },
@@ -74,6 +78,7 @@ async function hydrate(rows: Destination[], groupRiders: RiderLite[], viewerId: 
   return rows.map<FeedItem>((d) => {
     const myRx = rx.filter((r) => r.destinationId === d.id);
     const myIns = ins.filter((i) => i.destinationId === d.id);
+    const myRides = rd.filter((r) => r.destinationId === d.id);
     return {
       ...d,
       owner: who(d.riderId),
@@ -81,6 +86,8 @@ async function hydrate(rows: Destination[], groupRiders: RiderLite[], viewerId: 
       myReaction: myRx.find((r) => r.riderId === viewerId)?.emoji ?? null,
       interested: myIns.map((i) => who(i.riderId)),
       imIn: myIns.some((i) => i.riderId === viewerId),
+      riddenBy: myRides.map((r) => ({ rider: who(r.riderId), date: r.date })),
+      iRode: myRides.some((r) => r.riderId === viewerId),
       commentCount: commentCounts.get(d.id) ?? 0,
       stopCount: stopCounts.get(d.id) ?? 0,
     };

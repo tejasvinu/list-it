@@ -12,6 +12,7 @@ export default async function EditPage({ params }: PageProps<"/g/[slug]/d/[id]/e
   const d = await getDestination(ctx, id);
   if (!d) notFound();
   if (d.owner.id !== ctx.viewer.id) redirect(`/g/${slug}/d/${id}`);
+  const ownerRide = d.riddenBy.find((r) => r.rider.id === d.owner.id);
 
   return (
     <DestinationForm
@@ -40,8 +41,9 @@ export default async function EditPage({ params }: PageProps<"/g/[slug]/d/[id]/e
           seasons: d.seasons,
           hairpins: d.hairpins,
           notes: d.notes ?? "",
-          status: d.status,
-          statusDate: d.statusDate,
+          // The form's "Ridden" means the owner has ridden it.
+          status: ownerRide ? "done" : d.status,
+          statusDate: ownerRide ? ownerRide.date : d.statusDate,
           rideReport: d.rideReport ?? "",
         },
       }}

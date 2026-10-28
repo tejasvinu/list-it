@@ -55,10 +55,11 @@ export type Destination = {
   photos: Photo[];
   hairpins: number | null;
   notes: string | null;
-  /** What we learned riding it: written by the owner once it's ridden */
+  /** What we learned riding it: written by the owner once they've ridden it */
   rideReport: string | null;
+  /** wishlist | hailmary | planned. Who has ridden it lives in `rides`, per rider. */
   status: string;
-  /** YYYY-MM-DD: planned ride date or the day it was ridden */
+  /** YYYY-MM-DD: the planned ride date */
   statusDate: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -92,6 +93,8 @@ export type Comment = {
 export type Reaction = { destinationId: string; riderId: string; emoji: string; createdAt: Date };
 /** "I'm in", one per rider per destination */
 export type Interest = { destinationId: string; riderId: string; createdAt: Date };
+/** "I've ridden this", one per rider per destination. `date` is YYYY-MM-DD. */
+export type Ride = { destinationId: string; riderId: string; date: string | null; createdAt: Date };
 
 export type Activity = {
   id: string;
@@ -134,6 +137,7 @@ async function connect() {
   await client.connect();
   const db = client.db(process.env.MONGODB_DB || "list-it");
   await ensureIndexes(db);
+  await migrate(db);
   return db;
 }
 
@@ -144,10 +148,26 @@ async function ensureIndexes(db: Db) {
     db.collection("destinations").createIndex({ groupId: 1, createdAt: -1 }),
     db.collection("reactions").createIndex({ destinationId: 1, riderId: 1 }, { unique: true }),
     db.collection("interests").createIndex({ destinationId: 1, riderId: 1 }, { unique: true }),
+    db.collection("rides").createIndex({ destinationId: 1, riderId: 1 }, { unique: true }),
     db.collection("comments").createIndex({ destinationId: 1, createdAt: 1 }),
     db.collection("stops").createIndex({ destinationId: 1, createdAt: 1 }),
     db.collection("activity").createIndex({ groupId: 1, createdAt: -1 }),
   ]);
+}
+
+/** "Ridden" used to be a status on the whole ride. Move each one to a ride by the rider who added it. */
+async function migrate(db: Db) {
+  const dests = db.collection<Stored<Destination>>("destinations");
+  for (const d of await dests.find({ status: "done" }, { projection: { riderId: 1, statusDate: 1, updatedAt: 1 } }).toArray()) {
+    await db
+      .collection<Ride>("rides")
+      .updateOne(
+        { destinationId: d._id, riderId: d.riderId },
+        { $setOnInsert: { date: d.statusDate, createdAt: d.updatedAt } },
+        { upsert: true },
+      );
+    await dests.updateOne({ _id: d._id }, { $set: { status: "wishlist", statusDate: null } });
+  }
 }
 
 export function getDb() {
@@ -168,6 +188,7 @@ export async function cols() {
     comments: db.collection<Stored<Comment>>("comments"),
     reactions: db.collection<Reaction>("reactions") as Collection<Reaction>,
     interests: db.collection<Interest>("interests") as Collection<Interest>,
+    rides: db.collection<Ride>("rides") as Collection<Ride>,
     activity: db.collection<Stored<Activity>>("activity"),
   };
 }

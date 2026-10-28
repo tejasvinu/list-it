@@ -124,14 +124,14 @@ export function ProfileView({
           {list.map((d, i) => (
             <motion.div key={d.id} initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.025 }}>
               <Link href={`/g/${slug}/d/${d.id}`} className="relative block aspect-square overflow-hidden bg-surface">
-                <RouteArt id={`p-${tab}-${d.id}`} route={d.route} category={d.category} width={160} height={160} labels={false} animate={false} className="h-full w-full" />
+                <RouteArt id={`p-${tab}-${d.id}`} route={d.route} category={d.category} width={160} height={160} labels={false} animate={false} map className="h-full w-full" />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent p-1.5 pt-6">
                   <p className="truncate text-[12px] font-bold leading-tight">{d.name}</p>
                   <p className="text-[10px] text-white/60">{km(d.distanceKm)}</p>
                 </div>
-                {d.status === "done" && <span className="absolute right-1.5 top-1.5 text-sm">🏁</span>}
-                {d.status === "hailmary" && <span className="absolute right-1.5 top-1.5 text-sm">🙏</span>}
-                {d.status === "planned" && <span className="absolute right-1.5 top-1.5 text-sm">📅</span>}
+                <span className="absolute right-1.5 top-1.5 text-sm">
+                  {d.riddenBy.some((r) => r.rider.id === rider.id) ? "🏁" : d.status === "hailmary" ? "🙏" : d.status === "planned" ? "📅" : ""}
+                </span>
               </Link>
             </motion.div>
           ))}

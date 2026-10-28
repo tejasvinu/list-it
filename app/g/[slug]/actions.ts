@@ -30,6 +30,7 @@ import {
   STATUS_KEYS,
   STOP_KIND_KEYS,
 } from "@/lib/config";
+import { todayYmd } from "@/lib/format";
 import type { Photo, RoadSplit } from "@/lib/types";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -252,22 +253,38 @@ function validate(input: DestinationInput) {
     seasons: (input.seasons ?? []).filter((s) => SEASON_KEYS.includes(s as never)),
     hairpins: num(input.hairpins) && input.hairpins! >= 0 ? Math.min(999, Math.round(input.hairpins!)) : null,
     notes: cleanMultiline(input.notes, 2000) || null,
-    status,
-    statusDate: status === "planned" || status === "done" ? date : null,
+    // "Ridden" in the form means the person saving it has ridden it; that's kept per rider in `rides`.
+    status: status === "done" ? "wishlist" : status,
+    statusDate: status === "planned" ? date : null,
     rideReport: status === "done" ? cleanMultiline(input.rideReport, 3000) || null : null,
+    riddenOn: status === "done" ? (date ?? todayYmd()) : null,
   };
+}
+
+/** Marks (date) or unmarks (null) a ride as ridden by the viewer, keeping the activity feed in step. */
+async function setRidden(ctx: Awaited<ReturnType<typeof requireRider>>, id: string, date: string | null) {
+  const c = await cols();
+  const key = { destinationId: id, riderId: ctx.viewer.id };
+  if (date === null) {
+    if ((await c.rides.deleteOne(key)).deletedCount) await dropActivity(ctx, "done", id);
+    return;
+  }
+  const res = await c.rides.updateOne(key, { $set: { date }, $setOnInsert: { createdAt: new Date() } }, { upsert: true });
+  if (res.upsertedCount) await logActivity(ctx.log, "done", id, date);
 }
 
 export async function createDestination(slug: string, input: DestinationInput): Promise<Result<{ id: string }>> {
   const ctx = await requireRider(slug);
-  const data = validate(input);
-  if (!data) return fail("Something's off with that place. Try finding it again.");
+  const valid = validate(input);
+  if (!valid) return fail("Something's off with that place. Try finding it again.");
+  const { riddenOn, ...data } = valid;
   const id = rid(10);
   const now = new Date();
   await (await cols()).destinations.insertOne(
     toDoc<Destination>({ id, groupId: ctx.group.id, riderId: ctx.viewer.id, ...data, createdAt: now, updatedAt: now, deletedAt: null }),
   );
-  await logActivity(ctx.log, "added", id, data.status);
+  await logActivity(ctx.log, "added", id, riddenOn ? "done" : data.status);
+  if (riddenOn) await (await cols()).rides.insertOne({ destinationId: id, riderId: ctx.viewer.id, date: riddenOn, createdAt: now });
   refresh(slug);
   return { ok: true, id };
 }
@@ -282,12 +299,14 @@ async function ownDestination(ctx: Awaited<ReturnType<typeof requireRider>>, id:
 export async function updateDestination(slug: string, id: string, input: DestinationInput): Promise<Result> {
   const ctx = await requireRider(slug);
   const before = await ownDestination(ctx, id);
-  const data = validate(input);
-  if (!data) return fail("Something's off with that place.");
+  const valid = validate(input);
+  if (!valid) return fail("Something's off with that place.");
+  const { riddenOn, ...data } = valid;
   await (await cols()).destinations.updateOne({ _id: id }, { $set: { ...data, updatedAt: new Date() } });
-  if (data.status !== before.status && (data.status === "planned" || data.status === "done")) {
-    await logActivity(ctx.log, data.status, id, data.statusDate);
+  if (data.status !== before.status && data.status === "planned") {
+    await logActivity(ctx.log, "planned", id, data.statusDate);
   }
+  await setRidden(ctx, id, riddenOn);
   refresh(slug);
   return { ok: true };
 }
@@ -295,10 +314,10 @@ export async function updateDestination(slug: string, id: string, input: Destina
 export async function setStatus(slug: string, id: string, status: string, date: string | null): Promise<Result> {
   const ctx = await requireRider(slug);
   const before = await ownDestination(ctx, id);
-  if (!STATUS_KEYS.includes(status as never)) return fail("Unknown status.");
-  const statusDate = (status === "planned" || status === "done") && date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+  if (!STATUS_KEYS.includes(status as never) || status === "done") return fail("Unknown status.");
+  const statusDate = status === "planned" && date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
   await (await cols()).destinations.updateOne({ _id: id }, { $set: { status, statusDate, updatedAt: new Date() } });
-  if (status !== before.status && (status === "planned" || status === "done")) {
+  if (status !== before.status && status === "planned") {
     await logActivity(ctx.log, status, id, statusDate);
   }
   refresh(slug);
@@ -368,6 +387,16 @@ export async function toggleIn(slug: string, id: string): Promise<Result<{ in: b
   }
   refresh(slug);
   return { ok: true, in: !existing };
+}
+
+/** "I've ridden this" for any rider, on any ride. Pass a date to mark it, null to unmark. */
+export async function markRidden(slug: string, id: string, date: string | null): Promise<Result> {
+  const ctx = await requireRider(slug);
+  await visibleDestination(ctx, id);
+  if (date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("Pick a date.");
+  await setRidden(ctx, id, date);
+  refresh(slug);
+  return { ok: true };
 }
 
 export async function addComment(slug: string, id: string, body: string): Promise<Result> {

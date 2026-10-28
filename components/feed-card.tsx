@@ -14,21 +14,41 @@ import { categoryOf, duration, km, prettyDate, splitSummary, timeAgo } from "@/l
 import type { FeedItem } from "@/lib/data";
 import type { RiderLite } from "@/lib/types";
 
-export function StatusChip({ status, date }: { status: string; date: string | null }) {
+export function StatusChip({
+  status,
+  date,
+  ridden = [],
+  meId,
+}: {
+  status: string;
+  date: string | null;
+  ridden?: FeedItem["riddenBy"];
+  meId?: string;
+}) {
+  const chip = "inline-flex max-w-[180px] items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold";
+  if (ridden.length) {
+    const who = ridden.length > 1 ? `${ridden.length}` : ridden[0].rider.id === meId ? "you" : ridden[0].rider.name;
+    const last = ridden[0].date;
+    return (
+      <span className={`${chip} bg-emerald-400/15 text-emerald-300`}>
+        <span>🏁</span>
+        <span className="truncate">Ridden by {who}</span>
+        {last && <span className="shrink-0 opacity-75">· {prettyDate(last, { day: "numeric", month: "short" })}</span>}
+      </span>
+    );
+  }
   const s = STATUSES[(status in STATUSES ? status : "wishlist") as Status];
   const tone =
-    status === "done"
-      ? "bg-emerald-400/15 text-emerald-300"
-      : status === "planned"
-        ? "bg-accent/15 text-accent-2"
-        : status === "hailmary"
-          ? "bg-fuchsia-400/15 text-fuchsia-300"
-          : "bg-white/8 text-muted";
+    status === "planned"
+      ? "bg-accent/15 text-accent-2"
+      : status === "hailmary"
+        ? "bg-fuchsia-400/15 text-fuchsia-300"
+        : "bg-white/8 text-muted";
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${tone}`}>
+    <span className={`${chip} ${tone}`}>
       <span>{s.emoji}</span>
       {s.label}
-      {date && (status === "planned" || status === "done") && <span className="opacity-75">· {prettyDate(date, { day: "numeric", month: "short" })}</span>}
+      {date && status === "planned" && <span className="opacity-75">· {prettyDate(date, { day: "numeric", month: "short" })}</span>}
     </span>
   );
 }
@@ -91,7 +111,7 @@ export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: s
             </p>
           )}
         </div>
-        <StatusChip status={item.status} date={item.statusDate} />
+        <StatusChip status={item.status} date={item.statusDate} ridden={item.riddenBy} meId={me.id} />
       </header>
 
       <div className="relative mx-3 overflow-hidden rounded-[22px] border border-line bg-surface">
@@ -104,7 +124,7 @@ export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: s
           onClick={onMediaTap}
         >
           <div className="relative h-full w-full shrink-0 snap-center">
-            <RouteArt id={item.id} route={item.route} category={item.category} width={500} height={400} bottomRoom={0.22} className="h-full w-full" />
+            <RouteArt id={item.id} route={item.route} category={item.category} width={500} height={400} bottomRoom={0.22} map className="h-full w-full" />
           </div>
           {item.photos.map((p, i) => (
             <div key={p.thumb} className="relative h-full w-full shrink-0 snap-center bg-surface-2">
@@ -217,7 +237,7 @@ export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: s
             <span className="font-semibold">{item.owner.name}</span> <span className="text-text/90">{item.notes}</span>
           </p>
         )}
-        {item.status === "done" && item.rideReport && (
+        {item.rideReport && (
           <p className="line-clamp-2 rounded-xl bg-emerald-400/8 px-3 py-2 text-[13px] text-emerald-100/90">
             🏁 {item.rideReport}
           </p>

@@ -77,12 +77,12 @@ export function CrewMapView({ slug, items }: { slug: string; items: FeedItem[] }
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={current.photos[0].thumb} alt="" className="h-full w-full object-cover" />
                 ) : (
-                  <RouteArt id={`m-${current.id}`} route={current.route} category={current.category} width={92} height={92} labels={false} className="h-full w-full" />
+                  <RouteArt id={`m-${current.id}`} route={current.route} category={current.category} width={92} height={92} labels={false} map className="h-full w-full" />
                 )}
               </div>
               <div className="min-w-0 flex-1 py-0.5">
                 <div className="flex items-center gap-2">
-                  <StatusChip status={current.status} date={current.statusDate} />
+                  <StatusChip status={current.status} date={current.statusDate} ridden={current.riddenBy} />
                 </div>
                 <p className="mt-1 truncate font-display text-xl font-bold leading-tight">{current.name}</p>
                 <p className="text-[13px] text-muted">

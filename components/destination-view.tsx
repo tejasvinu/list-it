@@ -24,6 +24,7 @@ import {
   deleteComment,
   deleteDestination,
   deleteStop,
+  markRidden,
   refreshPhotos,
   setStatus,
 } from "@/app/g/[slug]/actions";
@@ -31,7 +32,7 @@ import { SEASONS, STATUS_KEYS, STATUSES, STOP_KIND_KEYS, STOP_KINDS, tagLabel, t
 import { categoryOf, duration, googleMapsPlace, googleMapsRoute, km, prettyDate, timeAgo, todayYmd } from "@/lib/format";
 import type { DestinationDetail } from "@/lib/data";
 import type { RiderLite } from "@/lib/types";
-import { Avatar } from "./avatar";
+import { Avatar, AvatarStack } from "./avatar";
 import { CategoryChip, StatusChip } from "./feed-card";
 import { RoadSplitBar } from "./road-split";
 import { Sheet } from "./sheet";
@@ -51,6 +52,7 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
   const [statusSheet, setStatusSheet] = useState(false);
   const [busy, start] = useTransition();
   const cat = categoryOf(d.category);
+  const ownerRide = d.riddenBy.find((r) => r.rider.id === d.owner.id);
 
   const share = () =>
     shareLink({ title: d.name, text: `${d.name}: ${km(d.distanceKm)} round trip from Bengaluru`, url: location.href });
@@ -85,11 +87,11 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
           <CategoryChip category={d.category} />
           {mine ? (
             <button onClick={() => setStatusSheet(true)} className="flex items-center gap-1">
-              <StatusChip status={d.status} date={d.statusDate} />
+              <StatusChip status={d.status} date={d.statusDate} ridden={d.riddenBy} meId={me.id} />
               <Pencil size={12} className="text-faint" />
             </button>
           ) : (
-            <StatusChip status={d.status} date={d.statusDate} />
+            <StatusChip status={d.status} date={d.statusDate} ridden={d.riddenBy} meId={me.id} />
           )}
         </div>
         <h1 className="mt-3 font-display text-[34px] font-bold leading-[1.02] tracking-tight">{d.name}</h1>
@@ -154,6 +156,8 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
           </p>
         )}
 
+        <Ridden d={d} slug={slug} me={me} />
+
         {d.photos.length > 0 && (
           <section className="mt-6">
             <SectionTitle>Around here</SectionTitle>
@@ -200,10 +204,10 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
           </section>
         )}
 
-        {d.status === "done" && (
+        {ownerRide && (
           <section className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/5 p-4">
             <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-emerald-300">
-              🏁 Ride report{d.statusDate && ` · ${prettyDate(d.statusDate, { day: "numeric", month: "short", year: "numeric" })}`}
+              🏁 {d.owner.name}&apos;s ride report{ownerRide.date && ` · ${prettyDate(ownerRide.date, { day: "numeric", month: "short", year: "numeric" })}`}
             </p>
             <p className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed text-emerald-50/90">
               {d.rideReport ?? (mine ? "Add what you learned so the next crew knows. Edit → Ride report." : "No report yet. Ask in the comments.")}
@@ -258,17 +262,14 @@ function StatusSheet({ open, onClose, d, slug }: { open: boolean; onClose: () =>
   const [status, setS] = useState(d.status);
   const [date, setDate] = useState(d.statusDate ?? "");
   const [busy, start] = useTransition();
-  const needsDate = status === "planned" || status === "done";
+  const needsDate = status === "planned";
   return (
     <Sheet open={open} onClose={onClose} title="Where's this at?">
-      <div className="grid grid-cols-2 gap-2">
-        {STATUS_KEYS.map((s) => (
+      <div className="grid grid-cols-3 gap-2">
+        {STATUS_KEYS.filter((s) => s !== "done").map((s) => (
           <button
             key={s}
-            onClick={() => {
-              setS(s);
-              if (s === "done" && !date) setDate(todayYmd());
-            }}
+            onClick={() => setS(s)}
             className={`rounded-2xl p-3 text-left transition ${status === s ? "bg-text text-black" : "bg-surface-2"}`}
           >
             <span className="text-xl">{STATUSES[s].emoji}</span>
@@ -279,7 +280,7 @@ function StatusSheet({ open, onClose, d, slug }: { open: boolean; onClose: () =>
       </div>
       {needsDate && (
         <label className="mt-3 flex items-center justify-between rounded-xl bg-surface-2 px-3 py-3 text-sm">
-          <span className="text-muted">{status === "planned" ? "Ride date" : "Ridden on"}</span>
+          <span className="text-muted">Ride date</span>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-transparent text-right font-semibold outline-none" />
         </label>
       )}
@@ -289,14 +290,81 @@ function StatusSheet({ open, onClose, d, slug }: { open: boolean; onClose: () =>
           start(async () => {
             await setStatus(slug, d.id, status, needsDate ? date || null : null);
             onClose();
-            toast(status === "planned" ? "Locked in 📅" : status === "done" ? "Ridden! Add a ride report 🏁" : "Updated");
+            toast(status === "planned" ? "Locked in 📅" : "Updated");
           })
         }
         className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-accent to-accent-2 py-3.5 font-display font-bold text-black"
       >
         {busy && <Loader2 size={16} className="animate-spin" />} Save
       </button>
+      <p className="mt-3 text-center text-xs text-faint">Been there? Everyone marks that for themselves with &ldquo;I&apos;ve ridden this&rdquo;.</p>
     </Sheet>
+  );
+}
+
+/** Who has ridden it, and the viewer's own "I've ridden this" toggle. */
+function Ridden({ d, slug, me }: { d: DestinationDetail; slug: string; me: RiderLite }) {
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState("");
+  const [busy, start] = useTransition();
+  const mine = d.riddenBy.find((r) => r.rider.id === me.id);
+  const save = (value: string | null) =>
+    start(async () => {
+      const res = await markRidden(slug, d.id, value);
+      setOpen(false);
+      toast(!res.ok ? res.error : value ? "Logged 🏁" : "Unmarked");
+    });
+
+  return (
+    <section className="mt-3 rounded-2xl border border-line bg-surface p-3">
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          {d.riddenBy.length ? (
+            <div className="flex items-center gap-2">
+              <AvatarStack riders={d.riddenBy.map((r) => r.rider)} max={4} size={24} />
+              <p className="truncate text-[13px] text-muted">
+                <span className="font-semibold text-text">
+                  {d.riddenBy.map((r) => (r.rider.id === me.id ? "You" : r.rider.name)).join(", ")}
+                </span>{" "}
+                rode this
+              </p>
+            </div>
+          ) : (
+            <p className="text-[13px] text-faint">Nobody&apos;s ridden this yet</p>
+          )}
+        </div>
+        <button
+          disabled={busy}
+          onClick={() => {
+            setDate(mine?.date ?? todayYmd());
+            setOpen(true);
+          }}
+          className={`shrink-0 rounded-full px-3.5 py-2 text-sm font-semibold ${
+            mine ? "bg-emerald-400/15 text-emerald-300" : "border border-line-strong"
+          }`}
+        >
+          {mine ? `🏁 Ridden${mine.date ? ` · ${prettyDate(mine.date, { day: "numeric", month: "short" })}` : ""}` : "🏁 I've ridden this"}
+        </button>
+      </div>
+      <Sheet open={open} onClose={() => setOpen(false)} title={mine ? "Your ride" : "When did you ride it?"}>
+        <label className="flex items-center justify-between rounded-xl bg-surface-2 px-3 py-3 text-sm">
+          <span className="text-muted">Ridden on</span>
+          <input type="date" value={date} max={todayYmd()} onChange={(e) => setDate(e.target.value)} className="bg-transparent text-right font-semibold outline-none" />
+        </label>
+        <button
+          disabled={busy || !date}
+          onClick={() => save(date)}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-accent to-accent-2 py-3.5 font-display font-bold text-black disabled:opacity-50"
+        >
+          {busy && <Loader2 size={16} className="animate-spin" />} {mine ? "Save date" : "Log it 🏁"}
+        </button>
+        {mine && (
+          <button disabled={busy} onClick={() => save(null)} className="mt-2 w-full py-3 text-sm font-semibold text-red-400">
+            I haven&apos;t ridden it
+          </button>
+        )}
+      </Sheet>
+    </section>
   );
 }
 

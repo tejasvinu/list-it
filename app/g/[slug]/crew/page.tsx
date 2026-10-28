@@ -41,7 +41,7 @@ export default async function CrewPage({ params }: PageProps<"/g/[slug]/crew">) 
       <ul className="mt-2">
         {ctx.riders.map((r) => {
           const added = feed.filter((d) => d.riderId === r.id).length;
-          const ridden = feed.filter((d) => d.status === "done" && (d.riderId === r.id || d.interested.some((x) => x.id === r.id))).length;
+          const ridden = feed.filter((d) => d.riddenBy.some((x) => x.rider.id === r.id)).length;
           return (
             <li key={r.id}>
               <Link href={`/g/${slug}/r/${r.id}`} className="flex items-center gap-3 px-4 py-3 active:bg-surface">

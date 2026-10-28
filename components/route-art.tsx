@@ -11,22 +11,32 @@ type Props = {
   labels?: boolean;
   /** Fraction of the height kept clear at the bottom, e.g. for a title overlay */
   bottomRoom?: number;
+  /** Draw darkened OpenStreetMap tiles under the route instead of the dotted canvas */
+  map?: boolean;
   className?: string;
+};
+
+/** Web Mercator, in pixels of a 256px world (zoom 0). */
+const mercator = (lat: number, lng: number) => {
+  const s = Math.sin((lat * Math.PI) / 180);
+  return [((lng + 180) / 360) * 256, (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * 256] as const;
 };
 
 /**
  * The route drawn as art: Bengaluru out to the destination and back,
- * projected onto a dark dotted canvas. No map tiles needed.
+ * on a dark dotted canvas, or with `map`, over darkened map tiles.
  */
-export function RouteArt({ id, route, category, width = 400, height = 300, animate = true, labels = true, bottomRoom = 0, className }: Props) {
+export function RouteArt({ id, route, category, width = 400, height = 300, animate = true, labels = true, bottomRoom = 0, map = false, className }: Props) {
   const color = categoryOf(category).color;
   const pts = route.length >= 2 ? route : [[HOME.lat, HOME.lng] as [number, number], [HOME.lat + 0.1, HOME.lng + 0.1] as [number, number]];
 
+  // Both projections are equirectangular-ish at this scale; map mode uses Mercator so it lines up with the tiles.
   const lats = pts.map((p) => p[0]);
-  const lngs = pts.map((p) => p[1]);
   const midLat = ((Math.min(...lats) + Math.max(...lats)) / 2) * (Math.PI / 180);
-  const xs = lngs.map((l) => l * Math.cos(midLat));
-  const ys = lats.map((l) => -l);
+  const toXY = (lat: number, lng: number) => (map ? mercator(lat, lng) : ([lng * Math.cos(midLat), -lat] as const));
+  const xy = pts.map(([la, ln]) => toXY(la, ln));
+  const xs = xy.map((p) => p[0]);
+  const ys = xy.map((p) => p[1]);
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
   const minY = Math.min(...ys);
@@ -38,8 +48,28 @@ export function RouteArt({ id, route, category, width = 400, height = 300, anima
   const scale = Math.min((width - pad * 2) / spanX, (height - room - pad * 2) / spanY);
   const offX = (width - spanX * scale) / 2;
   const offY = (height - room - spanY * scale) / 2;
-  const project = (lat: number, lng: number) =>
-    [offX + (lng * Math.cos(midLat) - minX) * scale, offY + (-lat - minY) * scale] as const;
+  // Rounded so the server and the browser agree to the digit (their Math.log can differ in the last bits).
+  const round = (v: number) => Math.round(v * 10) / 10;
+  const project = (lat: number, lng: number) => {
+    const [x, y] = toXY(lat, lng);
+    return [round(offX + (x - minX) * scale), round(offY + (y - minY) * scale)] as const;
+  };
+
+  // Tiles one zoom level finer than the fit, so they stay sharp on high-density screens.
+  const tiles: { href: string; x: number; y: number; size: number }[] = [];
+  if (map) {
+    const z = Math.max(2, Math.min(16, Math.floor(Math.log2(scale)) + 1));
+    const n = 2 ** z;
+    const size = (256 / n) * scale;
+    const x0 = offX - minX * scale;
+    const y0 = offY - minY * scale;
+    for (let ty = Math.max(0, Math.floor(-y0 / size)); ty <= Math.min(n - 1, Math.floor((height - y0) / size)); ty++) {
+      for (let tx = Math.floor(-x0 / size); tx <= Math.floor((width - x0) / size); tx++) {
+        const wx = ((tx % n) + n) % n;
+        tiles.push({ href: `https://tile.openstreetmap.org/${z}/${wx}/${ty}.png`, x: round(x0 + tx * size), y: round(y0 + ty * size), size: round(size) });
+      }
+    }
+  }
 
   const d = pts.map(([la, ln], i) => `${i ? "L" : "M"}${project(la, ln).map((v) => v.toFixed(1)).join(" ")}`).join("");
 
@@ -63,7 +93,7 @@ export function RouteArt({ id, route, category, width = 400, height = 300, anima
         <pattern id={`${gid}-dots`} width="14" height="14" patternUnits="userSpaceOnUse">
           <circle cx="1" cy="1" r="1" fill="rgba(255,255,255,0.07)" />
         </pattern>
-        <radialGradient id={`${gid}-glow`} cx={dx / width} cy={dy / height} r="0.6">
+        <radialGradient id={`${gid}-glow`} cx={(dx / width).toFixed(3)} cy={(dy / height).toFixed(3)} r="0.6">
           <stop offset="0" stopColor={color} stopOpacity="0.28" />
           <stop offset="1" stopColor={color} stopOpacity="0" />
         </radialGradient>
@@ -74,9 +104,31 @@ export function RouteArt({ id, route, category, width = 400, height = 300, anima
         <filter id={`${gid}-blur`} x="-20%" y="-20%" width="140%" height="140%">
           <feGaussianBlur stdDeviation="5" />
         </filter>
+        {map && (
+          // Same look as the Leaflet maps' .dark-tiles: invert, turn the hues back, then mute.
+          <filter id={`${gid}-dark`} colorInterpolationFilters="sRGB">
+            <feColorMatrix type="matrix" values="-1 0 0 0 1  0 -1 0 0 1  0 0 -1 0 1  0 0 0 1 0" />
+            <feColorMatrix type="hueRotate" values="180" />
+            <feColorMatrix type="saturate" values="0.35" />
+            <feComponentTransfer>
+              <feFuncR type="linear" slope="0.72" intercept="0.02" />
+              <feFuncG type="linear" slope="0.72" intercept="0.02" />
+              <feFuncB type="linear" slope="0.72" intercept="0.03" />
+            </feComponentTransfer>
+          </filter>
+        )}
       </defs>
       <rect width={width} height={height} fill="#0e0e12" />
-      <rect width={width} height={height} fill={`url(#${gid}-dots)`} />
+      {map ? (
+        <g filter={`url(#${gid}-dark)`}>
+          {tiles.map((t) => (
+            // Overlap by a hair so seams between tiles don't show.
+            <image key={t.href + t.x} href={t.href} x={t.x} y={t.y} width={t.size + 1} height={t.size + 1} preserveAspectRatio="none" />
+          ))}
+        </g>
+      ) : (
+        <rect width={width} height={height} fill={`url(#${gid}-dots)`} />
+      )}
       <rect width={width} height={height} fill={`url(#${gid}-glow)`} />
       <path d={d} fill="none" stroke={color} strokeOpacity="0.5" strokeWidth="7" filter={`url(#${gid}-blur)`} />
       <path
