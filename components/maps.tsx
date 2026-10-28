@@ -16,9 +16,12 @@ function homeIcon(L: L) {
     className: "",
     iconSize: [44, 22],
     iconAnchor: [22, 11],
-    html: `<div style="display:grid;place-items:center;height:22px;border-radius:999px;background:#09090b;border:2px solid #fff;color:#fff;font:700 10px/1 system-ui;letter-spacing:1px">${HOME.short}</div>`,
+    html: `<div style="display:grid;place-items:center;height:22px;border-radius:999px;background:#0e0e11;border:1.5px solid rgba(255,255,255,.9);color:#fff;font:700 10px/1 system-ui;letter-spacing:1px;box-shadow:0 4px 12px rgba(0,0,0,.5)">${HOME.short}</div>`,
   });
 }
+
+const escapeHtml = (t: string) =>
+  t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 function pinIcon(L: L, color: string, label?: string, big = false) {
   const s = big ? 22 : 16;
@@ -29,7 +32,7 @@ function pinIcon(L: L, color: string, label?: string, big = false) {
     html: `<div style="position:relative;width:${s}px;height:${s}px">
       <span style="position:absolute;inset:0;border-radius:999px;background:${color};opacity:.35;transform:scale(2.2)"></span>
       <span style="position:absolute;inset:0;border-radius:999px;background:${color};border:2.5px solid #09090b;box-shadow:0 0 12px ${color}"></span>
-      ${label ? `<span style="position:absolute;left:50%;top:${s + 6}px;transform:translateX(-50%);white-space:nowrap;font:700 11px/1.2 system-ui;color:#fff;text-shadow:0 1px 4px #000,0 0 2px #000">${label}</span>` : ""}
+      ${label ? `<span class="map-label" style="top:${s + 8}px">${escapeHtml(label)}</span>` : ""}
     </div>`,
   });
 }
@@ -137,8 +140,17 @@ export function PickMap({
   return <div ref={ref} className={`isolate ${className ?? ""}`} />;
 }
 
-// Leave room for the title and filter chips on top.
-const FIT_ALL = { paddingTopLeft: [36, 130] as [number, number], paddingBottomRight: [36, 36] as [number, number] };
+// Leave room for the title and chips on top and the dock below on phones,
+// and for the ride list panel on the left on desktop.
+const wideScreen = () => window.matchMedia("(min-width: 1024px)").matches;
+const fitAll = () =>
+  wideScreen()
+    ? { paddingTopLeft: [400, 60] as [number, number], paddingBottomRight: [60, 60] as [number, number] }
+    : { paddingTopLeft: [36, 130] as [number, number], paddingBottomRight: [36, 110] as [number, number] };
+const fitOne = () =>
+  wideScreen()
+    ? { paddingTopLeft: [420, 80] as [number, number], paddingBottomRight: [80, 200] as [number, number] }
+    : { paddingTopLeft: [40, 130] as [number, number], paddingBottomRight: [40, 230] as [number, number] };
 
 export type CrewMapItem = {
   id: string;
@@ -189,7 +201,7 @@ export function CrewMap({
       }
       L.marker([HOME.lat, HOME.lng], { icon: homeIcon(L) }).addTo(map);
       map.on("click", () => selectRef.current(null));
-      map.fitBounds(home, FIT_ALL);
+      map.fitBounds(home, fitAll());
       layers.current = { L, map, home, byId };
       return () => {
         layers.current = null;
@@ -212,8 +224,8 @@ export function CrewMap({
       marker.setZIndexOffset(on ? 1000 : 0);
     }
     const target = selected ? byId.get(selected) : null;
-    if (target) map.flyToBounds(target.line.getBounds(), { paddingTopLeft: [40, 130], paddingBottomRight: [40, 150], duration: 0.8 });
-    else map.flyToBounds(home, { ...FIT_ALL, duration: 0.8 });
+    if (target) map.flyToBounds(target.line.getBounds(), { ...fitOne(), duration: 0.8 });
+    else map.flyToBounds(home, { ...fitAll(), duration: 0.8 });
   }, [selected]);
 
   return <div ref={ref} className={`isolate ${className ?? ""}`} />;

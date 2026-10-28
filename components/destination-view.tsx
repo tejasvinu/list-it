@@ -58,23 +58,23 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
     shareLink({ title: d.name, text: `${d.name}: ${km(d.distanceKm)} round trip from Bengaluru`, url: location.href });
 
   return (
-    <div className="pb-24">
-      <div className="relative h-[44dvh] min-h-[280px]">
+    <div className="pb-8 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,560px)] lg:pb-0">
+      <div className="relative h-[44dvh] min-h-[280px] lg:sticky lg:top-0 lg:h-dvh">
         <RouteMap route={d.route} category={d.category} dest={d} stops={d.stops} className="h-full w-full" />
         <div className="pointer-events-none absolute inset-x-0 top-0 z-[500] flex justify-between bg-gradient-to-b from-black/60 to-transparent p-3 pb-10">
           <button
             onClick={() => (history.length > 1 ? router.back() : router.push(`/g/${slug}`))}
-            className="pointer-events-auto grid h-10 w-10 place-items-center rounded-full bg-black/60 backdrop-blur"
+            className="pointer-events-auto grid h-10 w-10 place-items-center rounded-full glass"
             aria-label="Back"
           >
             <ArrowLeft size={20} />
           </button>
           <div className="pointer-events-auto flex gap-2">
-            <button onClick={share} className="grid h-10 w-10 place-items-center rounded-full bg-black/60 backdrop-blur" aria-label="Share">
+            <button onClick={share} className="grid h-10 w-10 place-items-center rounded-full glass" aria-label="Share">
               <Send size={18} />
             </button>
             {mine && (
-              <button onClick={() => setMenu(true)} className="grid h-10 w-10 place-items-center rounded-full bg-black/60 backdrop-blur" aria-label="More">
+              <button onClick={() => setMenu(true)} className="grid h-10 w-10 place-items-center rounded-full glass" aria-label="More">
                 <MoreHorizontal size={20} />
               </button>
             )}
@@ -82,7 +82,7 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
         </div>
       </div>
 
-      <div className="relative z-10 -mt-6 rounded-t-[28px] border-t border-line bg-bg px-4 pt-5">
+      <div className="relative z-10 -mt-6 rounded-t-[28px] border-t border-line bg-bg px-4 pt-5 lg:mt-0 lg:rounded-none lg:border-l lg:border-t-0 lg:px-8 lg:pb-12 lg:pt-8">
         <div className="flex flex-wrap items-center gap-2">
           <CategoryChip category={d.category} />
           {mine ? (
@@ -206,7 +206,7 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
 
         {ownerRide && (
           <section className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/5 p-4">
-            <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-emerald-300">
+            <p className="text-[13px] font-semibold text-emerald-300">
               🏁 {d.owner.name}&apos;s ride report{ownerRide.date && ` · ${prettyDate(ownerRide.date, { day: "numeric", month: "short", year: "numeric" })}`}
             </p>
             <p className="mt-2 whitespace-pre-wrap text-[15px] leading-relaxed text-emerald-50/90">
@@ -293,7 +293,7 @@ function StatusSheet({ open, onClose, d, slug }: { open: boolean; onClose: () =>
             toast(status === "planned" ? "Locked in 📅" : "Updated");
           })
         }
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-accent to-accent-2 py-3.5 font-display font-bold text-black"
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl btn-primary py-3.5 font-display font-bold text-black"
       >
         {busy && <Loader2 size={16} className="animate-spin" />} Save
       </button>
@@ -354,7 +354,7 @@ function Ridden({ d, slug, me }: { d: DestinationDetail; slug: string; me: Rider
         <button
           disabled={busy || !date}
           onClick={() => save(date)}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-accent to-accent-2 py-3.5 font-display font-bold text-black disabled:opacity-50"
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl btn-primary py-3.5 font-display font-bold text-black disabled:opacity-50"
         >
           {busy && <Loader2 size={16} className="animate-spin" />} {mine ? "Save date" : "Log it 🏁"}
         </button>
@@ -485,7 +485,7 @@ function Stops({ d, slug, me }: { d: DestinationDetail; slug: string; me: RiderL
         <button
           onClick={submit}
           disabled={busy || (!name.trim() && !link.trim())}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-accent to-accent-2 py-3.5 font-display font-bold text-black disabled:opacity-40"
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl btn-primary py-3.5 font-display font-bold text-black disabled:opacity-40"
         >
           {busy && <Loader2 size={16} className="animate-spin" />} Add stop
         </button>
@@ -570,7 +570,7 @@ function Comments({ d, slug, me }: { d: DestinationDetail; slug: string; me: Rid
       </ul>
       <div ref={endRef} />
 
-      <div className="fixed inset-x-0 bottom-[calc(58px+max(env(safe-area-inset-bottom),0.5rem))] z-30 mx-auto max-w-[480px] border-t border-line bg-bg/90 px-3 py-2 backdrop-blur-xl">
+      <div className="mt-5">
         <div className="flex items-end gap-2">
           <Avatar rider={me} size={32} className="mb-1" />
           <div className="flex flex-1 items-end rounded-[20px] border border-line-strong bg-surface pl-3.5 pr-1 focus-within:border-accent">
@@ -613,18 +613,18 @@ function Comments({ d, slug, me }: { d: DestinationDetail; slug: string; me: Rid
 
 function Stat({ label, value, sub, accent }: { label: string; value: string; sub: string; accent?: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface p-3">
-      <p className="text-[11px] text-faint">{label}</p>
+    <div className="rounded-2xl border border-line bg-surface p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <p className="text-[12px] text-faint">{label}</p>
       <p className="font-display text-[22px] font-bold leading-tight" style={accent ? { color: accent } : undefined}>
         {value}
       </p>
-      <p className="truncate text-[11px] text-faint">{sub}</p>
+      <p className="truncate text-[12px] text-faint">{sub}</p>
     </div>
   );
 }
 
 function SectionTitle({ children, className = "mb-3" }: { children: React.ReactNode; className?: string }) {
-  return <h2 className={`text-[12px] font-bold uppercase tracking-[0.16em] text-faint ${className}`}>{children}</h2>;
+  return <h2 className={`section-label ${className}`}>{children}</h2>;
 }
 
 function MenuItem({

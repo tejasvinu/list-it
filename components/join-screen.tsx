@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, ArrowRight, Lock, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Lock, Search, Sparkles } from "lucide-react";
 import { Avatar } from "./avatar";
 import { PinPad } from "./pin-pad";
 import { joinGroup, signIn } from "@/app/g/[slug]/actions";
@@ -49,6 +49,7 @@ export function JoinScreen({
   const [color, setColor] = useState<string>(AVATAR_COLORS[0]);
   const [pending, start] = useTransition();
   const [nameError, setNameError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const [now] = useState(() => Date.now());
 
   const done = () => router.refresh();
@@ -96,7 +97,9 @@ export function JoinScreen({
         {step.s === "home" && (
           <motion.section key="home" {...slide} className="flex flex-1 flex-col">
             <div className="relative -mx-6 mb-2 h-[300px]">{hero}</div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-accent">You&apos;re invited</p>
+            <p className="mb-3 inline-flex items-center gap-1.5 self-start rounded-full border border-accent/25 bg-accent/10 px-2.5 py-1 text-[12px] font-semibold text-accent-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-accent" /> You&apos;re invited
+            </p>
             <h1 className="font-display text-[40px] font-bold leading-[1.02] tracking-tight">{groupName}</h1>
             <p className="mt-3 text-[15px] leading-relaxed text-muted">
               {destinationCount
@@ -121,7 +124,7 @@ export function JoinScreen({
                   <motion.button
                     whileTap={{ scale: 0.97 }}
                     onClick={() => setStep({ s: "name" })}
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-accent to-accent-2 py-4 font-display text-lg font-bold text-black shadow-[0_10px_40px_-10px_rgba(255,122,26,0.6)]"
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl btn-primary py-4 font-display text-lg font-bold text-black"
                   >
                     <Sparkles size={18} /> I&apos;m new here
                   </motion.button>
@@ -151,8 +154,19 @@ export function JoinScreen({
             {back({ s: "home" })}
             <h2 className="font-display text-3xl font-bold">Who&apos;s riding?</h2>
             <p className="mt-1 text-muted">Tap yourself, then your PIN.</p>
+            {riders.length > 6 && (
+              <label className="mt-6 flex items-center gap-2 rounded-2xl border border-line bg-surface px-3.5 focus-within:border-accent">
+                <Search size={16} className="text-faint" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Find your name"
+                  className="min-w-0 flex-1 bg-transparent py-3 outline-none placeholder:text-faint"
+                />
+              </label>
+            )}
             <div className="mt-8 grid grid-cols-3 gap-x-3 gap-y-6">
-              {riders.map((r, i) => (
+              {riders.filter((r) => r.name.toLowerCase().includes(query.trim().toLowerCase())).map((r, i) => (
                 <motion.button
                   key={r.id}
                   initial={{ opacity: 0, y: 12 }}
@@ -202,27 +216,31 @@ export function JoinScreen({
               />
             </div>
             {nameError && <p className="mt-3 text-sm text-danger">{nameError}</p>}
-            <p className="mb-3 mt-8 text-xs font-semibold uppercase tracking-wider text-faint">Pick your vibe</p>
-            <div className="grid grid-cols-10 gap-1.5">
+            <p className="mb-3 mt-8 section-label">Pick your vibe</p>
+            <div className="grid grid-cols-7 gap-2">
               {AVATAR_EMOJIS.map((e) => (
                 <button
                   key={e}
                   onClick={() => setEmoji(e)}
-                  className={`grid aspect-square place-items-center rounded-xl text-xl transition ${
-                    emoji === e ? "scale-110 bg-surface-3 ring-2 ring-accent" : "bg-surface"
+                  aria-label={`Avatar ${e}`}
+                  aria-pressed={emoji === e}
+                  className={`grid aspect-square min-h-11 place-items-center rounded-2xl text-2xl transition active:scale-90 ${
+                    emoji === e ? "bg-surface-3 ring-2 ring-accent" : "border border-line bg-surface"
                   }`}
                 >
                   {e}
                 </button>
               ))}
             </div>
-            <div className="mt-4 flex justify-between">
+            <p className="mb-3 mt-6 section-label">Colour</p>
+            <div className="grid grid-cols-5 justify-items-center gap-3 pb-8">
               {AVATAR_COLORS.map((c) => (
                 <button
                   key={c}
                   onClick={() => setColor(c)}
                   aria-label={`Colour ${c}`}
-                  className={`h-7 w-7 rounded-full transition ${color === c ? "scale-125 ring-2 ring-white ring-offset-2 ring-offset-bg" : ""}`}
+                  aria-pressed={color === c}
+                  className={`h-10 w-10 rounded-full transition active:scale-90 ${color === c ? "ring-2 ring-white ring-offset-[3px] ring-offset-bg" : ""}`}
                   style={{ background: c }}
                 />
               ))}
@@ -237,7 +255,7 @@ export function JoinScreen({
                 }
                 start(() => setStep({ s: "pin" }));
               }}
-              className="mt-auto flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-accent to-accent-2 py-4 font-display text-lg font-bold text-black disabled:opacity-40"
+              className="mt-auto flex w-full items-center justify-center gap-2 rounded-2xl btn-primary py-4 font-display text-lg font-bold text-black disabled:opacity-40"
             >
               Next <ArrowRight size={18} />
             </motion.button>

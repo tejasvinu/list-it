@@ -202,7 +202,7 @@ function StyleSheet({ open, onClose, slug, rider }: { open: boolean; onClose: ()
             toast("Looking good");
           })
         }
-        className="mt-5 w-full rounded-2xl bg-gradient-to-r from-accent to-accent-2 py-3.5 font-display font-bold text-black"
+        className="mt-5 w-full rounded-2xl btn-primary py-3.5 font-display font-bold text-black"
       >
         Save
       </button>

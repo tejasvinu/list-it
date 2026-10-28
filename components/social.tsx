@@ -149,7 +149,7 @@ export function InButton({
         compact ? "pr-3" : "pr-4"
       } ${
         state.imIn
-          ? "bg-gradient-to-r from-accent to-accent-2 text-black"
+          ? "btn-primary text-black"
           : "border border-line-strong bg-surface text-text"
       }`}
     >

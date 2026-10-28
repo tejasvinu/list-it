@@ -99,7 +99,7 @@ export function ActivityView({
       {items.length === 0 && <p className="px-4 py-16 text-center text-faint">Quiet so far. Go stir something up.</p>}
       {groups.map((g) => (
         <section key={g.label} className="pt-4">
-          <h2 className="px-4 pb-1 text-[12px] font-bold uppercase tracking-[0.16em] text-faint">{g.label}</h2>
+          <h2 className="px-4 pb-1 section-label">{g.label}</h2>
           <ul>
             {g.items.map((a, i) => {
               const fresh = a.riderId !== meId && new Date(a.createdAt).getTime() > seen;

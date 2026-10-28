@@ -31,12 +31,12 @@ export default async function AdminGroupPage({ params }: PageProps<"/admin/g/[id
         </Link>
         <form action={renameGroup.bind(null, id)} className="flex gap-2">
           <input name="name" defaultValue={group.name} className="min-w-0 flex-1 bg-transparent font-display text-3xl font-bold outline-none" />
-          <button className="text-sm text-faint">Rename</button>
+          <button className="rounded-lg px-2.5 text-sm text-faint hover:bg-surface-2 hover:text-text">Rename</button>
         </form>
       </div>
 
       <section className="space-y-2">
-        <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-faint">Share link</h2>
+        <h2 className="section-label">Share link</h2>
         <CopyLink url={url} />
         <a href={url} target="_blank" className="flex items-center gap-1.5 text-sm text-accent-2">
           Open crew <ExternalLink size={13} />
@@ -44,8 +44,8 @@ export default async function AdminGroupPage({ params }: PageProps<"/admin/g/[id
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-faint">Joining</h2>
-        <div className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-4">
+        <h2 className="section-label">Joining</h2>
+        <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm">
             {open ? (
               <>
@@ -58,11 +58,11 @@ export default async function AdminGroupPage({ params }: PageProps<"/admin/g/[id
           </p>
           <div className="flex gap-2">
             <form action={setRegistration.bind(null, id, true)}>
-              <button className="rounded-lg bg-surface-3 px-3 py-2 text-sm font-semibold">{open ? "Extend 3 days" : "Reopen 3 days"}</button>
+              <button className="whitespace-nowrap rounded-lg bg-surface-3 px-3 py-2 text-sm font-semibold hover:bg-white/15">{open ? "Extend 3 days" : "Reopen 3 days"}</button>
             </form>
             {open && (
               <form action={setRegistration.bind(null, id, false)}>
-                <button className="rounded-lg bg-surface-3 px-3 py-2 text-sm font-semibold">Close now</button>
+                <button className="whitespace-nowrap rounded-lg bg-surface-3 px-3 py-2 text-sm font-semibold hover:bg-white/15">Close now</button>
               </form>
             )}
           </div>
@@ -70,7 +70,7 @@ export default async function AdminGroupPage({ params }: PageProps<"/admin/g/[id
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-faint">Add a rider</h2>
+        <h2 className="section-label">Add a rider</h2>
         <MessageForm action={addRider.bind(null, id)} className="flex flex-wrap gap-2">
           <input name="name" required placeholder="Name" maxLength={24} className={`${input} min-w-0 flex-1`} />
           <input name="pin" required placeholder="PIN" inputMode="numeric" pattern="\d{4}" maxLength={4} className={`${input} w-20`} />
@@ -79,27 +79,31 @@ export default async function AdminGroupPage({ params }: PageProps<"/admin/g/[id
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-[12px] font-bold uppercase tracking-[0.16em] text-faint">Riders · {roster.length}</h2>
+        <h2 className="section-label">Riders · {roster.length}</h2>
         <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
           {roster.map((r) => (
-            <li key={r.id} className="flex flex-wrap items-center gap-3 p-3">
-              <Avatar rider={r} size={36} />
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold">{r.name}</p>
-                <p className="text-xs text-faint">
-                  joined {r.createdAt.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                  {isLockedOut(r) && <span className="text-danger"> · locked out</span>}
-                </p>
+            <li key={r.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <Avatar rider={r} size={36} />
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{r.name}</p>
+                  <p className="text-xs text-faint">
+                    Joined {r.createdAt.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                    {isLockedOut(r) && <span className="text-danger"> · locked out</span>}
+                  </p>
+                </div>
               </div>
-              <MessageForm action={resetPin.bind(null, r.id)} className="flex flex-wrap items-center gap-1.5">
-                <input name="pin" required placeholder="New PIN" inputMode="numeric" pattern="\d{4}" maxLength={4} className={`${input} w-24`} />
-                <button className="rounded-lg bg-surface-3 px-3 py-2 text-sm font-semibold">Reset</button>
-              </MessageForm>
-              <form action={removeRider.bind(null, r.id)}>
-                <ConfirmButton message={`Remove ${r.name}? Their posts stay, they get signed out.`} className="rounded-lg px-2 py-2 text-sm text-danger">
-                  Remove
-                </ConfirmButton>
-              </form>
+              <div className="flex items-center gap-1.5 pl-12 sm:pl-0">
+                <MessageForm action={resetPin.bind(null, r.id)} className="flex items-center gap-1.5">
+                  <input name="pin" required placeholder="New PIN" aria-label={`New PIN for ${r.name}`} inputMode="numeric" pattern="\d{4}" maxLength={4} className={`${input} w-24`} />
+                  <button className="rounded-lg bg-surface-3 px-3 py-2 text-sm font-semibold hover:bg-white/15">Reset</button>
+                </MessageForm>
+                <form action={removeRider.bind(null, r.id)} className="ml-auto">
+                  <ConfirmButton message={`Remove ${r.name}? Their posts stay, they get signed out.`} className="rounded-lg px-2.5 py-2 text-sm font-medium text-danger hover:bg-danger/10">
+                    Remove
+                  </ConfirmButton>
+                </form>
+              </div>
             </li>
           ))}
           {roster.length === 0 && <li className="p-4 text-sm text-faint">Nobody yet. Share the link.</li>}

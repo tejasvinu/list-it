@@ -5,6 +5,7 @@ import { JoinScreen } from "@/components/join-screen";
 import { BottomNav } from "@/components/bottom-nav";
 import { RouteWeb } from "@/components/route-web";
 import { Toaster } from "@/components/toast";
+import { ContentFrame } from "@/components/content-frame";
 
 export async function generateMetadata({ params }: LayoutProps<"/g/[slug]">): Promise<Metadata> {
   const { slug } = await params;
@@ -38,10 +39,10 @@ export default async function GroupLayout({ children, params }: LayoutProps<"/g/
 
   const unread = await hasUnread(ctx);
   return (
-    <div className="relative z-10 mx-auto min-h-dvh max-w-[480px] border-line pb-[calc(70px+env(safe-area-inset-bottom))] min-[481px]:border-x">
+    <div className="relative z-10 min-h-dvh">
       <Toaster />
-      {children}
-      <BottomNav slug={slug} me={lite(ctx.viewer)} unread={unread} />
+      <ContentFrame slug={slug}>{children}</ContentFrame>
+      <BottomNav slug={slug} me={lite(ctx.viewer)} unread={unread} groupName={ctx.group.name} />
     </div>
   );
 }

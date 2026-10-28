@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, LogOut } from "lucide-react";
+import { ChevronRight, LogOut, ShieldCheck } from "lucide-react";
 import { cols, fromDoc, type Group } from "@/lib/db";
 import { isAdmin, registrationOpen } from "@/lib/auth";
 import { adminLogin, adminLogout, createGroup } from "./actions";
@@ -11,8 +11,19 @@ export default async function AdminPage() {
   if (!(await isAdmin())) {
     return (
       <main className="relative z-10 mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-6">
-        <h1 className="mb-6 font-display text-3xl font-bold">list-it admin</h1>
-        <AdminLoginForm action={adminLogin} />
+        <div className="rounded-3xl border border-line bg-surface/80 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+          <span className="mb-5 grid h-11 w-11 place-items-center rounded-2xl bg-accent/12 text-accent">
+            <ShieldCheck size={22} />
+          </span>
+          <h1 className="font-display text-2xl font-bold tracking-tight">
+            list-it<span className="text-accent">.</span> admin
+          </h1>
+          <p className="mb-6 mt-1 text-sm text-muted">Create crews, manage riders and reset PINs.</p>
+          <AdminLoginForm action={adminLogin} />
+        </div>
+        <Link href="/" className="mt-6 text-center text-sm text-faint hover:text-muted">
+          Back to list-it
+        </Link>
       </main>
     );
   }
@@ -50,13 +61,13 @@ export default async function AdminPage() {
           placeholder="New crew name, e.g. Weekend Morning Rides"
           className="min-w-0 flex-1 rounded-xl border border-line-strong bg-surface px-4 py-3 outline-none focus:border-accent"
         />
-        <button className="rounded-xl bg-gradient-to-r from-accent to-accent-2 px-5 font-bold text-black">Create</button>
+        <button className="rounded-xl btn-primary px-5 font-bold text-black">Create</button>
       </form>
 
       <ul className="space-y-2">
         {all.map((g) => (
           <li key={g.id}>
-            <Link href={`/admin/g/${g.id}`} className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4">
+            <Link href={`/admin/g/${g.id}`} className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4 transition hover:border-line-strong hover:bg-surface-2">
               <div className="flex-1">
                 <p className="font-semibold">{g.name}</p>
                 <p className="text-[13px] text-faint">

@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Flame, Clock, Navigation, UserPlus } from "lucide-react";
+import { Flame, Clock, LayoutList, Navigation, Rows3, UserPlus } from "lucide-react";
 import { AvatarStack } from "./avatar";
-import { FeedCard } from "./feed-card";
+import { CompactCard, FeedCard } from "./feed-card";
 import { RouteArt } from "./route-art";
 import { shareLink } from "./toast";
 import { CATEGORIES } from "@/lib/config";
@@ -52,6 +52,19 @@ export function FeedView({
   const [filter, setFilter] = useState<FilterKey>("all");
   const [sort, setSort] = useState<SortKey>("fresh");
   const [now] = useState(() => Date.now());
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- read a per-device preference after hydration
+      setCompact(localStorage.getItem("feed-view") === "compact");
+    } catch {}
+  }, []);
+  const toggleView = () => {
+    setCompact(!compact);
+    try {
+      localStorage.setItem("feed-view", compact ? "cards" : "compact");
+    } catch {}
+  };
 
   const upcoming = useMemo(
     () =>
@@ -134,7 +147,7 @@ export function FeedView({
 
       {upcoming.length > 0 && filter === "all" && (
         <section className="pt-5">
-          <h3 className="mb-2.5 px-4 text-[12px] font-bold uppercase tracking-[0.16em] text-faint">Up next</h3>
+          <h3 className="mb-2.5 px-4 section-label">Up next</h3>
           <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto px-4">
             {upcoming.map((d) => {
               const days = daysUntil(d.statusDate!);
@@ -164,10 +177,11 @@ export function FeedView({
       )}
 
       <div className="flex items-center justify-between px-4 pb-1 pt-5">
-        <h3 className="text-[12px] font-bold uppercase tracking-[0.16em] text-faint">
+        <h3 className="section-label">
           {filter === "all" ? "The list" : FILTERS.find((f) => f.key === filter)?.label}
-          <span className="ml-1.5 text-faint/60">{shown.length}</span>
+          <span className="ml-1.5 text-faint">{shown.length}</span>
         </h3>
+        <div className="flex items-center gap-1.5">
         <div className="flex rounded-full bg-surface-2 p-0.5">
           {SORTS.map((s) => (
             <button
@@ -181,6 +195,15 @@ export function FeedView({
             </button>
           ))}
         </div>
+          <button
+            onClick={toggleView}
+            className="grid h-[28px] w-[28px] place-items-center rounded-full bg-surface-2 text-muted hover:text-text"
+            aria-label={compact ? "Show full cards" : "Show compact list"}
+            title={compact ? "Full cards" : "Compact list"}
+          >
+            {compact ? <Rows3 size={14} /> : <LayoutList size={14} />}
+          </button>
+        </div>
       </div>
 
       <AnimatePresence mode="popLayout" initial={false}>
@@ -193,7 +216,13 @@ export function FeedView({
             exit={{ opacity: 0, scale: 0.97 }}
             transition={{ type: "spring", stiffness: 400, damping: 36 }}
           >
-            <FeedCard item={item} slug={slug} me={me} priority={i < 2} />
+            {compact ? (
+              <div className="px-4 py-1">
+                <CompactCard item={item} slug={slug} me={me} />
+              </div>
+            ) : (
+              <FeedCard item={item} slug={slug} me={me} priority={i < 2} />
+            )}
           </motion.div>
         ))}
       </AnimatePresence>
@@ -208,7 +237,7 @@ export function FeedView({
           {!items.length && (
             <Link
               href={`/g/${slug}/new`}
-              className="mt-6 rounded-2xl bg-gradient-to-r from-accent to-accent-2 px-6 py-3 font-display font-bold text-black"
+              className="mt-6 rounded-2xl btn-primary px-6 py-3 font-display font-bold text-black"
             >
               Add the first ride
             </Link>
@@ -221,9 +250,9 @@ export function FeedView({
 
 function Stat({ value, label }: { value: string; label: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface px-3 py-2.5">
-      <p className="font-display text-[22px] font-bold leading-none tabular-nums">{value}</p>
-      <p className="mt-1 text-[11px] text-faint">{label}</p>
+    <div className="rounded-2xl border border-line bg-surface px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <p className="font-display text-[24px] font-bold leading-none tracking-tight tabular-nums">{value}</p>
+      <p className="mt-1.5 text-[12px] text-faint">{label}</p>
     </div>
   );
 }

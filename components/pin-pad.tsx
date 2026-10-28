@@ -60,7 +60,7 @@ export function PinPad({
 
   return (
     <div className="flex flex-col items-center">
-      {label && <p className="mb-5 text-sm text-muted">{label}</p>}
+      {label && <p className="mb-5 text-[15px] font-medium text-text/90">{label}</p>}
       <motion.div animate={controls} className="mb-3 flex gap-4">
         {[0, 1, 2, 3].map((i) => (
           <motion.span
@@ -68,7 +68,7 @@ export function PinPad({
             animate={{ scale: pin.length === i + 1 ? [1, 1.35, 1] : 1 }}
             transition={{ duration: 0.18 }}
             className={`h-3.5 w-3.5 rounded-full border-2 transition-colors ${
-              i < pin.length ? (error ? "border-danger bg-danger" : "border-accent bg-accent") : "border-line-strong"
+              i < pin.length ? (error ? "border-danger bg-danger" : "border-accent bg-accent") : "border-white/30"
             }`}
           />
         ))}
@@ -85,7 +85,7 @@ export function PinPad({
           0
         </Key>
         <Key onPress={back} disabled={busy || !pin} ghost aria-label="Delete">
-          <Delete size={22} />
+          <Delete size={24} />
         </Key>
       </div>
     </div>
@@ -112,7 +112,9 @@ function Key({
       onClick={onPress}
       disabled={disabled}
       className={`grid h-[68px] w-[68px] place-items-center rounded-full font-display text-[28px] font-medium transition-colors disabled:opacity-40 ${
-        ghost ? "text-muted" : "bg-surface-2 text-text active:bg-surface-3"
+        ghost
+          ? "text-text/80 hover:bg-surface-2 active:bg-surface-3"
+          : "border border-line bg-surface-2 text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] hover:bg-surface-3 active:bg-surface-3"
       }`}
       {...rest}
     >

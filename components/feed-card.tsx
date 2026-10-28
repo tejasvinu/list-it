@@ -25,7 +25,7 @@ export function StatusChip({
   ridden?: FeedItem["riddenBy"];
   meId?: string;
 }) {
-  const chip = "inline-flex max-w-[180px] items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold";
+  const chip = "inline-flex max-w-[180px] items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-semibold";
   if (ridden.length) {
     const who = ridden.length > 1 ? `${ridden.length}` : ridden[0].rider.id === meId ? "you" : ridden[0].rider.name;
     const last = ridden[0].date;
@@ -56,7 +56,7 @@ export function StatusChip({
 export function CategoryChip({ category }: { category: string }) {
   const c = categoryOf(category);
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold backdrop-blur-md">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/55 px-2.5 py-1 text-[12px] font-semibold backdrop-blur-md">
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: c.color, boxShadow: `0 0 8px ${c.color}` }} />
       {c.short}
     </span>
@@ -90,7 +90,7 @@ export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: s
   };
 
   return (
-    <article className="pb-5">
+    <article className="border-b border-line pb-5 last:border-b-0">
       <header className="flex items-center gap-3 px-4 py-3">
         <Link href={`/g/${slug}/r/${item.owner.id}`}>
           <Avatar rider={item.owner} size={36} />
@@ -256,5 +256,34 @@ export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: s
         </div>
       </div>
     </article>
+  );
+}
+
+/** One-line row for the compact feed: thumbnail, name and the numbers that matter. */
+export function CompactCard({ item, slug, me }: { item: FeedItem; slug: string; me: RiderLite }) {
+  const cat = categoryOf(item.category);
+  return (
+    <Link
+      href={`/g/${slug}/d/${item.id}`}
+      className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-2 pr-3 transition hover:border-line-strong hover:bg-surface-2 active:scale-[0.99]"
+    >
+      <span className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl">
+        <RouteArt id={`c-${item.id}`} route={item.route} category={item.category} width={72} height={72} labels={false} map className="h-full w-full" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: cat.color }} />
+          <span className="truncate font-display text-[17px] font-bold leading-tight">{item.name}</span>
+        </span>
+        <span className="mt-0.5 block text-[13px] text-muted">
+          {km(item.distanceKm)} · {duration(item.durationMin)}
+          {item.hairpins ? ` · 🌀 ${item.hairpins}` : ""}
+        </span>
+        <span className="mt-1.5 flex items-center gap-2">
+          <StatusChip status={item.status} date={item.statusDate} ridden={item.riddenBy} meId={me.id} />
+          {item.interested.length > 0 && <span className="text-[12px] text-faint">{item.interested.length} in</span>}
+        </span>
+      </span>
+    </Link>
   );
 }

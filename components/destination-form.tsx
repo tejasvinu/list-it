@@ -132,12 +132,18 @@ export function DestinationForm({
     startSave(async () => {
       if (editId) {
         const res = await updateDestination(slug, editId, input);
-        if (!res.ok) return setError(res.error);
+        if (!res.ok) {
+          setError(res.error);
+          return toast(res.error);
+        }
         toast("Saved");
         router.push(`/g/${slug}/d/${editId}`);
       } else {
         const res = await createDestination(slug, input);
-        if (!res.ok) return setError(res.error);
+        if (!res.ok) {
+          setError(res.error);
+          return toast(res.error);
+        }
         toast("Posted to the crew 🏍️");
         router.push(`/g/${slug}/d/${res.id}`);
       }
@@ -166,7 +172,7 @@ export function DestinationForm({
             whileTap={{ scale: 0.95 }}
             onClick={save}
             disabled={saving}
-            className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-accent to-accent-2 px-5 py-2 font-display font-bold text-black disabled:opacity-60"
+            className="flex items-center gap-1.5 rounded-full btn-primary px-5 py-2 font-display font-bold text-black disabled:opacity-60"
           >
             {saving && <Loader2 size={16} className="animate-spin" />}
             {editId ? "Save" : "Post"}
@@ -367,15 +373,6 @@ export function DestinationForm({
 
               {error && <p className="text-sm text-danger">{error}</p>}
 
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                onClick={save}
-                disabled={saving}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-accent to-accent-2 py-4 font-display text-lg font-bold text-black disabled:opacity-60"
-              >
-                {saving && <Loader2 size={18} className="animate-spin" />}
-                {editId ? "Save changes" : "Post to the crew"}
-              </motion.button>
             </section>
           </motion.div>
         )}
@@ -541,7 +538,7 @@ function Finder({ slug, onFound }: { slug: string; onFound: (p: Preview) => void
               whileTap={{ scale: 0.96 }}
               onClick={() => fromLink()}
               disabled={!link.trim()}
-              className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-accent to-accent-2 py-3.5 font-display font-bold text-black disabled:opacity-40"
+              className="flex items-center justify-center gap-2 rounded-2xl btn-primary py-3.5 font-display font-bold text-black disabled:opacity-40"
             >
               Go <MoveRight size={18} />
             </motion.button>
@@ -600,7 +597,7 @@ function Finder({ slug, onFound }: { slug: string; onFound: (p: Preview) => void
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-2 text-[12px] font-bold uppercase tracking-[0.14em] text-faint">
+      <p className="mb-2 section-label">
         {label}
         {hint && <span className="ml-2 font-normal normal-case tracking-normal text-faint/70">{hint}</span>}
       </p>
