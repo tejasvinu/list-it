@@ -1,4 +1,5 @@
 import "server-only";
+import { notify } from "./notifications";
 import { cache } from "react";
 import { notFound } from "next/navigation";
 import { cols, fromDoc, toDoc, type Activity, type Comment, type Destination, type Group, type Rider, type Stop } from "./db";
@@ -192,15 +193,10 @@ export async function getActivity(ctx: GroupContext, limit = 120) {
 }
 export type ActivityItem = Awaited<ReturnType<typeof getActivity>>[number];
 
-/** Whether others have done something since the viewer last opened the activity tab. */
+/** Whether this rider has unread notifications. */
 export async function hasUnread(ctx: GroupContext) {
   if (!ctx.viewer) return false;
-  const since = ctx.viewer.activitySeenAt ?? ctx.viewer.createdAt;
-  const hit = await (await cols()).activity.findOne(
-    { groupId: ctx.group.id, riderId: { $ne: ctx.viewer.id }, createdAt: { $gt: since } },
-    { projection: { _id: 1 } },
-  );
-  return !!hit;
+  return !!(await (await cols()).notifications.findOne({ groupId: ctx.group.id, riderId: ctx.viewer.id, readAt: null }, { projection: { _id: 1 } }));
 }
 
 export async function logActivity(
@@ -212,4 +208,5 @@ export async function logActivity(
   await (await cols()).activity.insertOne(
     toDoc<Activity>({ id: rid(), groupId: ctx.groupId, riderId: ctx.riderId, kind, destinationId, detail, createdAt: new Date() }),
   );
+  if (destinationId && kind !== "rode") await notify(ctx.groupId, ctx.riderId, kind, destinationId, null, detail);
 }

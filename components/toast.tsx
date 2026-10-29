@@ -55,16 +55,20 @@ export async function attempt<T>(action: () => Promise<T>): Promise<T | undefine
   }
 }
 
-/** Native share sheet on phones, clipboard elsewhere. */
-export async function shareLink(opts: { title: string; text?: string; url: string }) {
+/** Native share sheet on phones, with a clipboard or WhatsApp fallback. */
+export async function shareLink(opts: { title: string; text?: string; url: string; whatsappFallback?: boolean }) {
   if (navigator.share) {
     try {
-      await navigator.share(opts);
+      await navigator.share({ title: opts.title, text: opts.text, url: opts.url });
       return;
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
     }
   }
-  await navigator.clipboard.writeText(opts.url);
-  toast("Link copied");
+  if (opts.whatsappFallback) {
+    window.open(`https://wa.me/?text=${encodeURIComponent([opts.text, opts.url].filter(Boolean).join("\n"))}`, "_blank", "noopener,noreferrer");
+  } else {
+    await navigator.clipboard.writeText(opts.url);
+    toast("Link copied");
+  }
 }

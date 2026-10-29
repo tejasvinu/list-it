@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { motion } from "motion/react";
-import { markActivitySeen } from "@/app/g/[slug]/actions";
 import { STOP_KINDS, type StopKind } from "@/lib/config";
 import { prettyDate, timeAgo, todayYmd } from "@/lib/format";
 import type { ActivityItem } from "@/lib/data";
@@ -15,6 +14,8 @@ function describe(a: ActivityItem) {
   switch (a.kind) {
     case "loop-added":
       return <>added a loop, <span className="font-semibold">{a.loopName}</span></>;
+    case "loop-commented":
+      return <>on <span className="font-semibold">{a.loopName}</span>: {a.detail}</>;
     case "loop-in":
       return <>is in for <span className="font-semibold">{a.loopName}</span></>;
     case "joined":
@@ -87,10 +88,7 @@ export function ActivityView({
 }) {
   // Keep the "new" highlights for this visit even after we mark everything seen.
   const [seen] = useState(seenAt);
-  useEffect(() => {
-    // Only clears the unread dot; if it fails, the dot just stays until next time.
-    markActivitySeen(slug).catch(() => {});
-  }, [slug]);
+
 
   const groups: { label: string; items: ActivityItem[] }[] = [];
   for (const a of items) {

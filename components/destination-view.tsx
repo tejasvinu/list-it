@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import {
   addComment,
+  loadSuggestions,
+  addSuggestion,
   addStop,
   deleteComment,
   deleteDestination,
@@ -30,6 +32,7 @@ import {
 import { SEASONS, STATUS_KEYS, STATUSES, STOP_KIND_KEYS, STOP_KINDS, tagLabel, type Season, type StopKind } from "@/lib/config";
 import { categoryOf, duration, googleMapsPlace, googleMapsRoute, km, prettyDate, timeAgo } from "@/lib/format";
 import type { DestinationDetail } from "@/lib/data";
+import type { SuggestedStop } from "@/lib/db";
 import type { RiderLite } from "@/lib/types";
 import { Avatar } from "./avatar";
 import { StatusChip } from "./feed-card";
@@ -53,6 +56,7 @@ export function DestinationView({ d, slug, me, riders, weather, loops }: { d: De
   // Rides from removed riders can be looked after by anyone, or nobody could ever change them.
   const mine = d.owner.id === me.id || d.ownerGone;
   const { state, set } = useReactions(slug, d.id, me, { mine: d.myReaction, list: d.reactions });
+  const [suggestions, setSuggestions] = useState<SuggestedStop[]>([]);
   const [menu, setMenu] = useState(false);
   const [statusSheet, setStatusSheet] = useState(false);
   const [busy, start] = useTransition();
@@ -60,12 +64,12 @@ export function DestinationView({ d, slug, me, riders, weather, loops }: { d: De
   const ownerRide = d.riddenBy.find((r) => r.rider.id === d.owner.id);
 
   const share = () =>
-    shareLink({ title: d.name, text: `${d.name}: ${km(d.distanceKm)} round trip from Bengaluru`, url: location.href });
+    shareLink({ title: d.name, text: `${d.name}: ${km(d.distanceKm)} round trip from Bengaluru${d.statusDate ? ` · ${prettyDate(d.statusDate)}` : ""}`, url: location.href, whatsappFallback: true });
 
   return (
     <div className="pb-10 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,600px)] lg:pb-0">
       <div className="relative h-[34dvh] min-h-[240px] bg-surface-2 lg:sticky lg:top-0 lg:h-dvh">
-        <RouteMap route={d.route} category={d.category} dest={d} stops={d.stops} className="h-full w-full" />
+        <RouteMap route={d.route} category={d.category} dest={d} stops={[...d.stops, ...suggestions.filter((suggestion) => !d.stops.some((stop) => stop.kind === suggestion.kind && stop.lat === suggestion.lat && stop.lng === suggestion.lng))]} className="h-full w-full" />
         <div className="pointer-events-none absolute inset-x-0 top-0 z-[500] flex justify-between p-3 pt-[max(env(safe-area-inset-top),12px)]">
           <button
             onClick={() => (history.length > 1 ? router.back() : router.push(`/g/${slug}`))}
@@ -125,6 +129,7 @@ export function DestinationView({ d, slug, me, riders, weather, loops }: { d: De
         <div className="mt-7 flex flex-wrap items-center gap-3">
           <InButton slug={slug} id={d.id} me={me} imIn={d.imIn} interested={d.interested} />
           <AddToLoop slug={slug} rideId={d.id} loops={loops} />
+          {d.status === "planned" && d.statusDate && <a href={`/g/${slug}/calendar/ride/${d.id}`} className="btn btn-line">Add to calendar</a>}
           <a href={googleMapsRoute(d.lat, d.lng)} target="_blank" rel="noreferrer" className="btn btn-line">
             <Navigation size={16} /> Route in Maps
           </a>
@@ -221,7 +226,7 @@ export function DestinationView({ d, slug, me, riders, weather, loops }: { d: De
           </section>
         )}
 
-        <Stops d={d} slug={slug} me={me} />
+        <Stops d={d} slug={slug} me={me} suggestions={suggestions} setSuggestions={setSuggestions} />
         <Comments d={d} slug={slug} me={me} />
       </div>
 
@@ -308,7 +313,39 @@ function StatusSheet({ open, onClose, d, slug }: { open: boolean; onClose: () =>
   );
 }
 
-function Stops({ d, slug, me }: { d: DestinationDetail; slug: string; me: RiderLite }) {
+function Stops({
+  d,
+  slug,
+  me,
+  suggestions,
+  setSuggestions,
+}: {
+  d: DestinationDetail;
+  slug: string;
+  me: RiderLite;
+  suggestions: SuggestedStop[];
+  setSuggestions: (stops: SuggestedStop[]) => void;
+}) {
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [added, setAdded] = useState<string[]>([]);
+  const [suggestBusy, startSuggest] = useTransition();
+  const openSuggestions = () => {
+    setSuggestOpen(true);
+    if (loaded) return;
+    startSuggest(async () => {
+      setSuggestError(null);
+      const result = await attempt(() => loadSuggestions(slug, d.id));
+      if (!result) return;
+      if (!result.ok) {
+        setSuggestError(result.error);
+        return;
+      }
+      setSuggestions(result.stops);
+      setLoaded(true);
+    });
+  };
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<StopKind>("breakfast");
   const [name, setName] = useState("");
@@ -340,8 +377,14 @@ function Stops({ d, slug, me }: { d: DestinationDetail; slug: string; me: RiderL
           <Plus size={15} /> Add a stop
         </button>
       </div>
+      <button onClick={openSuggestions} className="btn btn-line mb-4">
+        Suggest stops
+      </button>
       {d.stops.length === 0 ? (
-        <button onClick={() => setOpen(true)} className="w-full rounded-panel bg-surface p-4 text-left text-[15px] text-muted transition-colors hover:bg-surface-2">
+        <button
+          onClick={() => setOpen(true)}
+          className="w-full rounded-panel bg-surface p-4 text-left text-[15px] text-muted transition-colors hover:bg-surface-2"
+        >
           Breakfast places, viewpoints, photo spots, fuel. Anyone in the crew can add one.
         </button>
       ) : (
@@ -351,7 +394,10 @@ function Stops({ d, slug, me }: { d: DestinationDetail; slug: string; me: RiderL
             const canDelete = s.riderId === me.id || d.owner.id === me.id;
             return (
               <li key={s.id} className="relative flex gap-3 rounded-panel py-2.5 pl-3">
-                <span className="absolute -left-5 top-4 h-4 w-4 rounded-full border-[3px] border-bg bg-text" aria-hidden />
+                <span
+                  className="absolute -left-5 top-4 h-4 w-4 rounded-full border-[3px] border-bg bg-text"
+                  aria-hidden
+                />
                 <div className="min-w-0 flex-1">
                   <p className="text-[17px] font-semibold leading-tight">{s.name}</p>
                   <p className="mt-0.5 text-[14px] text-faint">
@@ -373,7 +419,10 @@ function Stops({ d, slug, me }: { d: DestinationDetail; slug: string; me: RiderL
                   )}
                   {canDelete && (
                     <button
-                      onClick={() => confirm("Remove this stop?") && start(async () => void (await attempt(() => deleteStop(slug, s.id))))}
+                      onClick={() =>
+                        confirm("Remove this stop?") &&
+                        start(async () => void (await attempt(() => deleteStop(slug, s.id))))
+                      }
                       className="grid h-11 w-11 place-items-center rounded-full text-faint hover:bg-surface-2 hover:text-danger"
                       aria-label={`Remove ${s.name}`}
                     >
@@ -387,6 +436,68 @@ function Stops({ d, slug, me }: { d: DestinationDetail; slug: string; me: RiderL
         </ol>
       )}
 
+      <Sheet open={suggestOpen} onClose={() => setSuggestOpen(false)} title="Suggest stops">
+        {suggestBusy && !loaded && <p className="text-muted">Looking along the route…</p>}
+        {suggestError && (
+          <p className="text-danger">
+            {suggestError}{" "}
+            <button className="underline" onClick={openSuggestions}>
+              Try again
+            </button>
+          </p>
+        )}
+        {loaded && suggestions.length === 0 && (
+          <p className="text-muted">No suggestions found along this route. You can add a stop yourself.</p>
+        )}
+        {["breakfast", "viewpoint", "fuel", "photo"].map((kind) => {
+          const group = suggestions.filter((stop) => stop.kind === kind);
+          if (!group.length) return null;
+          return (
+            <section key={kind} className="mb-5">
+              <h4 className="display text-[22px]">{STOP_KINDS[kind as StopKind].label}</h4>
+              {group.map((stop) => {
+                const already =
+                  added.includes(stop.id) ||
+                  d.stops.some((item) => item.kind === stop.kind && item.lat === stop.lat && item.lng === stop.lng);
+                return (
+                  <div key={stop.id} className="flex items-center gap-2 border-b border-line py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold">{stop.name}</p>
+                      <p className="text-sm text-muted">At km {stop.km}</p>
+                    </div>
+                    <a
+                      className="text-sm underline"
+                      href={googleMapsPlace(stop.lat, stop.lng)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open in Maps
+                    </a>
+                    <button
+                      className="btn btn-quiet"
+                      disabled={already || suggestBusy}
+                      onClick={() =>
+                        startSuggest(async () => {
+                          const result = await attempt(() => addSuggestion(slug, d.id, stop.id));
+                          if (!result) return;
+                          if (!result.ok) {
+                            toast(result.error);
+                            return;
+                          }
+                          setAdded([...added, stop.id]);
+                          toast("Stop added");
+                        })
+                      }
+                    >
+                      {already ? "Added" : "Add"}
+                    </button>
+                  </div>
+                );
+              })}
+            </section>
+          );
+        })}
+      </Sheet>
       <Sheet open={open} onClose={() => setOpen(false)} title="Add a stop">
         <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Kind of stop">
           {STOP_KIND_KEYS.map((k) => (
@@ -395,8 +506,19 @@ function Stops({ d, slug, me }: { d: DestinationDetail; slug: string; me: RiderL
             </button>
           ))}
         </div>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (or leave empty and paste a link)" maxLength={60} className="field mt-4" />
-        <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="Google Maps link (optional)" className="field mt-2" />
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Name (or leave empty and paste a link)"
+          maxLength={60}
+          className="field mt-4"
+        />
+        <input
+          value={link}
+          onChange={(e) => setLink(e.target.value)}
+          placeholder="Google Maps link (optional)"
+          className="field mt-2"
+        />
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -406,7 +528,11 @@ function Stops({ d, slug, me }: { d: DestinationDetail; slug: string; me: RiderL
           className="field mt-2 resize-none"
         />
         {error && <p className="mt-2 text-[15px] text-danger">{error}</p>}
-        <button onClick={submit} disabled={busy || (!name.trim() && !link.trim())} className="btn btn-ink mt-4 w-full !min-h-12">
+        <button
+          onClick={submit}
+          disabled={busy || (!name.trim() && !link.trim())}
+          className="btn btn-ink mt-4 w-full !min-h-12"
+        >
           {busy && <Loader2 size={16} className="animate-spin" />} Add stop
         </button>
       </Sheet>

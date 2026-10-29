@@ -10,7 +10,7 @@ import { loopDate, loopDays } from "@/lib/loops";
 import type { LoopDetail } from "@/lib/loop-data";
 import type { WeatherDay } from "@/lib/weather-types";
 import { Avatar } from "./avatar";
-import { attempt, toast } from "./toast";
+import { attempt, shareLink, toast } from "./toast";
 
 const LoopMap = dynamic(() => import("./maps").then((m) => m.LoopMap), {
   ssr: false,
@@ -65,6 +65,8 @@ export function LoopView({
           <button disabled={busy} className="btn btn-ink" onClick={() => run(() => toggleLoopIn(slug, loop.id))}>
             {loop.imIn ? "I'm in ✓" : "Count me in"}
           </button>
+          <button className="btn btn-line" onClick={() => void shareLink({ title: loop.name, text: `${loop.name}: ${km(loop.totalKm)}${loop.startDate ? ` · ${prettyDate(loop.startDate)}` : ""}`, url: location.href, whatsappFallback: true })}>Share</button>
+          {loop.startDate && <a href={`/g/${slug}/calendar/loop/${loop.id}`} className="btn btn-line">Add to calendar</a>}
           {loop.riderId === meId && (
             <Link className="btn btn-line" href={`/g/${slug}/loops/${loop.id}/edit`}>
               Edit loop

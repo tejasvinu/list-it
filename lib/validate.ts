@@ -118,7 +118,7 @@ export function validateDestination(raw: unknown, now: Date | number = Date.now(
     ),
   ].slice(0, 12);
   const status = typeof input.status === "string" && STATUS_KEYS.includes(input.status as never) ? input.status : "wishlist";
-  const date = typeof input.statusDate === "string" && YMD.test(input.statusDate) ? input.statusDate : null;
+  const date = validDate(input.statusDate) ? input.statusDate : null;
   const hairpins = input.hairpins;
 
   return {
@@ -146,10 +146,14 @@ export function validateDestination(raw: unknown, now: Date | number = Date.now(
   };
 }
 
-export function validRideDate(value: unknown, now: Date | number = Date.now()): value is string {
-  if (typeof value !== "string" || !YMD.test(value) || value > todayYmd(now)) return false;
+export function validDate(value: unknown): value is string {
+  if (typeof value !== "string" || !YMD.test(value) || value < "1900-01-01" || value > "9998-12-31") return false;
   const date = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+export function validRideDate(value: unknown, now: Date | number = Date.now()): value is string {
+  return validDate(value) && value <= todayYmd(now);
 }
 export function validStart(value: unknown) {
   if (!value || typeof value !== "object") return null;

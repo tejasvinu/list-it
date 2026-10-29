@@ -100,6 +100,10 @@ Written 29 October 2026. This is the brief for v2: every README roadmap item tha
 - A night at the last stop still leaves a final day for the ride home. Days over either limit are warnings only. OSRM failures use a 1.3-times straight-line estimate per leg at 50 km/h, marked as approximate.
 - OSRM previews are cached for an hour; saved routes live on the loop. Loop comments and attendance use separate collections, and loop activity points to the loop. Concurrent edits are rejected if the saved loop changes while it is being routed.
 
+- Stop suggestions use interpolated two-kilometre samples from the saved round-trip polyline; overlapping outbound and return sections use the first matching sample. Unnamed viewpoints and photo spots receive a generic label. Cached suggestions are invalidated when the route or pin changes.
+- Notifications are kept per recipient and exclude removed riders and the actor. Commenters on the same ride or loop receive thread updates; one event is sent once per recipient. A weekly digest includes plans made or changed in the past seven days, and stops at complete entries under 1,500 characters.
+- Calendar events are all-day, with an exclusive end date; a loop spans its computed number of riding days. WhatsApp sharing is the fallback for ride and loop shares, while existing feed shares retain their clipboard fallback.
+
 ## Progress
 
 ### Phase 1 — implementation in progress
@@ -114,3 +118,9 @@ Written 29 October 2026. This is the brief for v2: every README roadmap item tha
 - Added loop creation, editing and deletion, stop search and ride selection, live routing and day splits, overnight forecasts, attendance, comments, activity and dashed crew-map routes. Added the feed switch, add chooser and ride-to-loop sheet. The demo seed now includes a Yercaud–Mettur loop and ride-log entries.
 - Checked the new server-render paths, membership and ownership checks, route fallback, deleted-ride handling and stale-edit protection in code. Added unit tests for day splits, date validation, OSRM legs and fallback. `npm run typecheck`, `npm run lint` and `npm run build` passed. `npm test` failed before running tests because Windows `os.userInfo()` returned `uv_os_get_passwd` ENOMEM; all 26 tests passed using the specified direct `tsx` command with a temporary preload.
 - Browser checks at 390 and 1440 px were skipped as directed for this sandbox; the orchestrator will run them. The seed script was updated but not run against the database.
+
+### Phase 3 — smarter stops, notifications, calendar and sharing
+
+- Added on-demand Overpass stop suggestions, a seven-day route-aware cache, grouped add/Maps controls and route markers. Added recipient notifications for ride and loop activity, the For you/Crew views, visible-tab polling and a WhatsApp weekly digest. Added signed-in all-day calendar downloads and ride/loop sharing.
+- Fixed an earlier date-validation gap that accepted impossible planned dates, and record planned date changes as activity so interested riders can be notified. Added tests for stop sampling/ranking, calendar escaping, line folding and dates.
+- `npm run typecheck`, `npm run lint`, and `npm run build` passed. `npm test` failed before running tests because Windows `os.userInfo()` returned `uv_os_get_passwd` ENOMEM; the direct `tsx` command with a temporary-directory preload passed all tests. Browser checks at 390 and 1440 px were skipped as directed; the orchestrator will run them. External Overpass and WhatsApp interactions were not exercised in a browser.

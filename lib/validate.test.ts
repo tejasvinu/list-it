@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { daysUntil, todayYmd } from "./format";
-import { cleanRoadSplit, inRange, isGoogleMapsHost, mapsUrlOk, validateDestination, validRideDate, validStart } from "./validate";
+import { cleanRoadSplit, inRange, isGoogleMapsHost, mapsUrlOk, validateDestination, validDate, validRideDate, validStart } from "./validate";
 
 const base = {
   name: "  Nandi   Hills ",
@@ -103,4 +103,9 @@ test("start point needs a name and coordinates in range", () => {
   assert.deepEqual(validStart({ name: " Hebbal ", lat: 13.03, lng: 77.6 }), { name: "Hebbal", lat: 13.03, lng: 77.6 });
   assert.equal(validStart({ name: "", lat: 13, lng: 77 }), null);
   assert.equal(validStart({ name: "Far away", lat: 90, lng: 77 }), null);
+});
+
+test("planned dates reject impossible calendar dates", () => {
+  assert.equal(validDate("2026-02-30"), false);
+  assert.equal(validDate("2028-02-29"), true);
 });

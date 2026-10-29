@@ -7,6 +7,7 @@ import { HOME } from "@/lib/config";
 import { resolvePlace, searchPlaces } from "@/lib/geo";
 import { routeLoop } from "@/lib/loop-routing";
 import { rid } from "@/lib/ids";
+import { notify } from "@/lib/notifications";
 import { cleanMultiline, inRange, validateLoop } from "@/lib/validate";
 import type { Loop, LoopStop } from "@/lib/types";
 
@@ -157,6 +158,7 @@ export async function toggleLoopIn(slug: string, id: string): Promise<Result> {
   } else {
     await c.loopInterests.updateOne(key, { $setOnInsert: { createdAt: new Date() } }, { upsert: true });
     await activity(ctx.group.id, ctx.viewer.id, id, "loop-in");
+    await notify(ctx.group.id, ctx.viewer.id, "loop-in", null, id);
   }
   refresh(slug);
   return { ok: true };
@@ -177,6 +179,8 @@ export async function commentLoop(slug: string, id: string, body: string): Promi
     createdAt: new Date(),
     deletedAt: null,
   });
+  await activity(ctx.group.id, ctx.viewer.id, id, "loop-commented", text.slice(0, 140));
+  await notify(ctx.group.id, ctx.viewer.id, "loop-commented", null, id, text.slice(0, 140));
   refresh(slug);
   return { ok: true };
 }

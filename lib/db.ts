@@ -115,6 +115,14 @@ export type Activity = {
 export type LoopInterest = { loopId: string; riderId: string; createdAt: Date };
 export type LoopComment = { id: string; loopId: string; riderId: string; body: string; createdAt: Date; deletedAt: Date | null };
 
+export type Notification = {
+  id: string; groupId: string; riderId: string; kind: string; actorId: string;
+  destinationId: string | null; loopId: string | null; detail: string | null;
+  createdAt: Date; readAt: Date | null;
+};
+export type SuggestedStop = { id: string; kind: string; name: string; lat: number; lng: number; km: number };
+export type StopSuggestions = { destinationId: string; routeKey: string; stops: SuggestedStop[]; updatedAt: Date };
+
 export type OriginRoute = { destinationId: string; lat: number; lng: number; distanceKm: number; durationMin: number; approx: boolean; destinationLat: number; destinationLng: number; updatedAt: Date };
 export type WeatherCache = { lat: number; lng: number; days: import("./weather-types").WeatherDay[]; updatedAt: Date };
 
@@ -166,6 +174,8 @@ async function connect() {
 
 async function ensureIndexes(db: Db) {
   await Promise.all([
+    db.collection("notifications").createIndex({ groupId: 1, riderId: 1, readAt: 1, createdAt: -1 }),
+    db.collection("stopSuggestions").createIndex({ destinationId: 1 }, { unique: true }),
     db.collection("loops").createIndex({ groupId: 1, createdAt: -1 }),
     db.collection("loopInterests").createIndex({ loopId: 1, riderId: 1 }, { unique: true }),
     db.collection("loopComments").createIndex({ loopId: 1, createdAt: 1 }),
@@ -213,6 +223,8 @@ export function getDb() {
 export async function cols() {
   const db = await getDb();
   return {
+    notifications: db.collection<Stored<Notification>>("notifications"),
+    stopSuggestions: db.collection<StopSuggestions>("stopSuggestions"),
     loops: db.collection<Stored<Loop>>("loops"),
     loopInterests: db.collection<LoopInterest>("loopInterests"),
     loopComments: db.collection<Stored<LoopComment>>("loopComments"),

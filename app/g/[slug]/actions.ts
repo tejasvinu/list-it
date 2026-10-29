@@ -22,9 +22,11 @@ import {
 } from "@/lib/geo";
 import { AVATAR_COLORS, AVATAR_EMOJIS, REACTIONS, STATUS_KEYS, STOP_KIND_KEYS } from "@/lib/config";
 import { routeSealOk, sealRoute } from "@/lib/seal";
-import { clean, cleanMultiline, inRange, validateDestination, validRideDate, validStart, type DestinationInput } from "@/lib/validate";
+import { clean, cleanMultiline, inRange, validateDestination, validDate, validRideDate, validStart, type DestinationInput } from "@/lib/validate";
 import type { Photo, StartPoint } from "@/lib/types";
 import { originRoute } from "@/lib/origin-routes";
+import { notify } from "@/lib/notifications";
+import { suggestStops } from "@/lib/overpass";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -222,7 +224,7 @@ export async function updateDestination(slug: string, id: string, input: Destina
   if (!valid) return fail("Something's off with that place. Try finding it again.");
   const { riddenOn, ...data } = valid;
   await (await cols()).destinations.updateOne({ _id: id }, { $set: { ...data, updatedAt: new Date() } });
-  if (data.status !== before.status && data.status === "planned") {
+  if (data.status === "planned" && (before.status !== "planned" || (data.statusDate && data.statusDate !== before.statusDate))) {
     await logActivity(ctx.log, "planned", id, data.statusDate);
   }
   if (riddenOn) await setRidden(ctx, id, riddenOn);
@@ -234,9 +236,10 @@ export async function setStatus(slug: string, id: string, status: string, date: 
   const ctx = await requireRider(slug);
   const before = await ownDestination(ctx, id);
   if (!STATUS_KEYS.includes(status as never) || status === "done") return fail("Unknown status.");
-  const statusDate = status === "planned" && date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+  if (status === "planned" && date && !validDate(date)) return fail("Pick a valid date.");
+  const statusDate = status === "planned" && date ? date : null;
   await (await cols()).destinations.updateOne({ _id: id }, { $set: { status, statusDate, updatedAt: new Date() } });
-  if (status !== before.status && status === "planned") {
+  if (status === "planned" && (before.status !== "planned" || (statusDate && statusDate !== before.statusDate))) {
     await logActivity(ctx.log, status, id, statusDate);
   }
   refresh(slug);
@@ -478,6 +481,9 @@ export async function logRide(slug: string, id: string, input: { date: string; r
   }, { upsert: true })));
   await c.destinations.updateOne({ _id: id, groupId: ctx.group.id, status: "planned", statusDate: input.date }, { $set: { status: "wishlist", statusDate: null, updatedAt: new Date() } });
   await logActivity(ctx.log, "rode", id, `${input.date} · ${ids.length} rider${ids.length === 1 ? "" : "s"}`);
+  const owner = await visibleDestination(ctx, id);
+  if (!ids.includes(owner.riderId)) await notify(ctx.group.id, ctx.viewer.id, "rode", id, null, input.date);
+  await notify(ctx.group.id, ctx.viewer.id, "logged", id, null, input.date, ids);
   refresh(slug);
   return { ok: true };
 }
@@ -490,6 +496,62 @@ export async function removeRideLog(slug: string, id: string, riderId: string): 
   const entry = await c.rides.findOne({ destinationId: id, riderId });
   if (!entry || (riderId !== ctx.viewer.id && entry.loggedBy !== ctx.viewer.id)) return fail("You can't remove this ride.");
   await c.rides.deleteOne({ destinationId: id, riderId });
+  refresh(slug);
+  return { ok: true };
+}
+
+export async function loadSuggestions(
+  slug: string,
+  id: string,
+): Promise<Result<{ stops: import("@/lib/db").SuggestedStop[] }>> {
+  const ctx = await requireRider(slug);
+  if (typeof id !== "string" || !id || id.length > 80) return fail("Ride not found.");
+  const row = fromDoc<Destination>(
+    await (await cols()).destinations.findOne({ _id: id, groupId: ctx.group.id, deletedAt: null }),
+  );
+  if (!row) return fail("Ride not found.");
+  const stops = await suggestStops(row);
+  if (!stops) return fail("Suggestions are unavailable. Try again later.");
+  return { ok: true, stops };
+}
+
+export async function addSuggestion(slug: string, id: string, suggestionId: string): Promise<Result> {
+  const ctx = await requireRider(slug);
+  await visibleDestination(ctx, id);
+  if (typeof suggestionId !== "string" || !/^\d+$/.test(suggestionId)) return fail("Stop not found.");
+  const c = await cols();
+  const cached = await c.stopSuggestions.findOne({ destinationId: id });
+  const destination = await c.destinations.findOne({ _id: id, groupId: ctx.group.id, deletedAt: null });
+  const routeKey = destination && JSON.stringify([destination.lat, destination.lng, destination.route]);
+  const stop = cached?.routeKey === routeKey ? cached.stops.find((item) => item.id === suggestionId) : undefined;
+  if (!stop) return fail("Stop not found. Load suggestions again.");
+  const existing = await c.stops.findOne({ destinationId: id, kind: stop.kind, lat: stop.lat, lng: stop.lng });
+  if (existing) return { ok: true };
+  await c.stops.insertOne({
+    _id: rid(),
+    destinationId: id,
+    riderId: ctx.viewer.id,
+    kind: stop.kind,
+    name: stop.name,
+    lat: stop.lat,
+    lng: stop.lng,
+    mapsUrl: null,
+    note: null,
+    createdAt: new Date(),
+  });
+  await logActivity(ctx.log, "stop", id, `${stop.kind}:${stop.name}`);
+  refresh(slug);
+  return { ok: true };
+}
+
+export async function markNotificationsRead(slug: string): Promise<Result> {
+  const ctx = await requireRider(slug);
+  await (
+    await cols()
+  ).notifications.updateMany(
+    { groupId: ctx.group.id, riderId: ctx.viewer.id, readAt: null },
+    { $set: { readAt: new Date() } },
+  );
   refresh(slug);
   return { ok: true };
 }

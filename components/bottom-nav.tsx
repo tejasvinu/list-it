@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "./toast";
 import { Sheet } from "./sheet";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { Bell, Map, Plus, Rows3 } from "lucide-react";
 import { Avatar } from "./avatar";
@@ -23,7 +24,40 @@ export function BottomNav({
   groupName: string;
 }) {
   const path = usePathname();
+  const router = useRouter();
   const [choose, setChoose] = useState(false);
+  const [hasNotifications, setHasNotifications] = useState(unread);
+  const latest = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    let active = true;
+    const check = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const response = await fetch(`/g/${slug}/notifications`, { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json() as { count: number; latest: string | null };
+        if (!active) return;
+        if (latest.current !== undefined && data.latest && data.latest !== latest.current) {
+          toast("New notification");
+          if (path === `/g/${slug}/activity`) router.refresh();
+        }
+        latest.current = data.latest;
+        setHasNotifications(data.count > 0);
+      } catch {
+        // Retry on the next visible interval.
+      }
+    };
+    void check();
+    const timer = window.setInterval(check, 60000);
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("list-it-notifications-read", check);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("list-it-notifications-read", check);
+    };
+  }, [slug, path, router]);
   const base = `/g/${slug}`;
   // Full-screen flows hide the nav.
   if (path.startsWith(`${base}/new`) || path.startsWith(`${base}/loops/new`) || path.endsWith("/edit")) return null;
@@ -42,7 +76,7 @@ export function BottomNav({
       icon: Bell,
       label: "Activity",
       active: path.startsWith(`${base}/activity`),
-      dot: unread,
+      dot: hasNotifications,
     },
     { href: `${base}/r/${me.id}`, label: "You", me: true, active: path.startsWith(`${base}/r/${me.id}`) },
   ];
