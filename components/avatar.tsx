@@ -1,5 +1,6 @@
 import type { RiderLite } from "@/lib/types";
 
+/** A rider: their emoji on a pale disc of their own colour. */
 export function Avatar({
   rider,
   size = 36,
@@ -18,9 +19,8 @@ export function Avatar({
       style={{
         width: size,
         height: size,
-        fontSize: size * 0.5,
-        background: `radial-gradient(circle at 30% 25%, ${rider.color}55, ${rider.color}22 60%, ${rider.color}11)`,
-        boxShadow: `inset 0 0 0 1.5px ${rider.color}66`,
+        fontSize: size * 0.52,
+        background: `color-mix(in oklab, ${rider.color} 26%, var(--surface))`,
       }}
     >
       <span style={{ lineHeight: 1 }}>{rider.emoji}</span>
@@ -38,7 +38,7 @@ export function AvatarStack({ riders, max = 4, size = 24 }: { riders: RiderLite[
       ))}
       {extra > 0 && (
         <span
-          className="-ml-2 inline-grid place-items-center rounded-full bg-surface-3 text-[10px] font-semibold text-muted ring-2 ring-bg"
+          className="num -ml-2 inline-grid place-items-center rounded-full bg-surface-3 text-[11px] font-semibold text-muted ring-2 ring-bg"
           style={{ width: size, height: size }}
         >
           +{extra}

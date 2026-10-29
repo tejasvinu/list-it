@@ -1,27 +1,26 @@
 import { splitParts, splitSummary } from "@/lib/format";
 import type { RoadSplit } from "@/lib/types";
 
+/** The round trip's road mix, in kilometre-stone colours. */
 export function RoadSplitBar({ split }: { split: RoadSplit }) {
   const parts = splitParts(split);
   return (
-    <div className="rounded-2xl border border-line bg-surface p-3">
-      <div className="mb-2 flex items-baseline justify-between">
-        <p className="text-[13px] font-semibold">{splitSummary(split)}</p>
-        <p className="text-[11px] text-faint">road mix, round trip</p>
-      </div>
-      <div className="flex h-2.5 gap-0.5 overflow-hidden rounded-full">
+    <figure>
+      <figcaption className="mb-2.5 text-[16px] font-semibold">{splitSummary(split)}</figcaption>
+      <div className="flex h-3 gap-[3px]" role="img" aria-label={parts.map((p) => `${p.label} ${Math.round(p.km)} km`).join(", ")}>
         {parts.map((p) => (
-          <span key={p.key} style={{ width: `${p.pct}%`, background: p.color }} className="h-full first:rounded-l-full last:rounded-r-full" />
+          <span key={p.key} style={{ width: `${p.pct}%`, background: p.color }} className="h-full rounded-[2px]" />
         ))}
       </div>
-      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+      <ul className="num mt-3 flex flex-wrap gap-x-5 gap-y-1.5">
         {parts.map((p) => (
-          <span key={p.key} className="flex items-center gap-1.5 text-[11px] text-muted">
-            <span className="h-2 w-2 rounded-full" style={{ background: p.color }} />
-            {p.label} <span className="text-faint">{Math.round(p.pct)}%</span>
-          </span>
+          <li key={p.key} className="flex items-center gap-2 text-[14px] text-muted">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ background: p.color }} />
+            {p.label}
+            <span className="font-semibold text-text">{Math.round(p.km)} km</span>
+          </li>
         ))}
-      </div>
-    </div>
+      </ul>
+    </figure>
   );
 }

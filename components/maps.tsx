@@ -5,18 +5,21 @@ import type * as Leaflet from "leaflet";
 import { HOME, STOP_KINDS, type StopKind } from "@/lib/config";
 import { categoryOf } from "@/lib/format";
 
-// Standard OSM tiles (free, no key), turned dark with a CSS filter on .dark-tiles in globals.css.
+// Standard OSM tiles (free, no key), turned grey (or inverted at night) by .map-tiles in globals.css.
 const TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
 type L = typeof Leaflet;
 
+/** Leaflet paints lines in SVG attributes, which can't take var(); this is --surface for each theme. */
+const casing = () => (matchMedia("(prefers-color-scheme: dark)").matches ? "#181917" : "#ffffff");
+
 function homeIcon(L: L) {
   return L.divIcon({
     className: "",
-    iconSize: [44, 22],
-    iconAnchor: [22, 11],
-    html: `<div style="display:grid;place-items:center;height:22px;border-radius:999px;background:#0e0e11;border:1.5px solid rgba(255,255,255,.9);color:#fff;font:700 10px/1 system-ui;letter-spacing:1px;box-shadow:0 4px 12px rgba(0,0,0,.5)">${HOME.short}</div>`,
+    iconSize: [86, 26],
+    iconAnchor: [43, 13],
+    html: `<div style="display:grid;place-items:center;height:26px;border-radius:3px;background:var(--text);color:var(--inverse);font:700 14px/1 var(--font-display),system-ui;box-shadow:0 2px 6px rgb(0 0 0/.25)">${HOME.name}</div>`,
   });
 }
 
@@ -24,26 +27,26 @@ const escapeHtml = (t: string) =>
   t.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 function pinIcon(L: L, color: string, label?: string, big = false) {
-  const s = big ? 22 : 16;
+  const s = big ? 20 : 14;
   return L.divIcon({
     className: "",
     iconSize: [s, s],
     iconAnchor: [s / 2, s / 2],
     html: `<div style="position:relative;width:${s}px;height:${s}px">
-      <span style="position:absolute;inset:0;border-radius:999px;background:${color};opacity:.35;transform:scale(2.2)"></span>
-      <span style="position:absolute;inset:0;border-radius:999px;background:${color};border:2.5px solid #09090b;box-shadow:0 0 12px ${color}"></span>
-      ${label ? `<span class="map-label" style="top:${s + 8}px">${escapeHtml(label)}</span>` : ""}
+      <span style="position:absolute;inset:0;border-radius:999px;background:${color};border:3px solid var(--surface);box-shadow:0 1px 4px rgb(0 0 0/.35)"></span>
+      ${label ? `<span class="map-label" style="top:${s + 6}px">${escapeHtml(label)}</span>` : ""}
     </div>`,
   });
 }
 
+/** A stop: a small plate with the kind's initial, like a roadside board. */
 function stopIcon(L: L, kind: string) {
-  const emoji = STOP_KINDS[(kind in STOP_KINDS ? kind : "other") as StopKind].emoji;
+  const label = STOP_KINDS[(kind in STOP_KINDS ? kind : "other") as StopKind].label;
   return L.divIcon({
     className: "",
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    html: `<div style="display:grid;place-items:center;width:28px;height:28px;border-radius:999px;background:#1b1b20;border:1.5px solid rgba(255,255,255,.25);font-size:14px">${emoji}</div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    html: `<div title="${escapeHtml(label)}" style="display:grid;place-items:center;width:24px;height:24px;border-radius:999px;background:var(--surface);color:var(--text);box-shadow:0 0 0 2px var(--text);font:700 13px/1 var(--font-display),system-ui">${label[0]}</div>`,
   });
 }
 
@@ -58,7 +61,7 @@ function useLeafletMap(setup: (L: L, map: Leaflet.Map) => void | (() => void), d
       const L = (mod.default ?? mod) as L;
       if (cancelled || !ref.current) return;
       map = L.map(ref.current, { zoomControl: false, attributionControl: true });
-      L.tileLayer(TILES, { attribution: ATTRIBUTION, maxZoom: 19, className: "dark-tiles" }).addTo(map);
+      L.tileLayer(TILES, { attribution: ATTRIBUTION, maxZoom: 19, className: "map-tiles" }).addTo(map);
       cleanup = setup(L, map);
     });
     return () => {
@@ -87,8 +90,8 @@ export function RouteMap({
   const color = categoryOf(category).color;
   const ref = useLeafletMap(
     (L, map) => {
-      L.polyline(route, { color, weight: 9, opacity: 0.18 }).addTo(map);
-      const line = L.polyline(route, { color, weight: 3.5, opacity: 0.95 }).addTo(map);
+      L.polyline(route, { color: casing(), weight: 8, opacity: 0.9 }).addTo(map);
+      const line = L.polyline(route, { color, weight: 4, opacity: 1 }).addTo(map);
       L.marker([HOME.lat, HOME.lng], { icon: homeIcon(L) }).addTo(map);
       L.marker([dest.lat, dest.lng], { icon: pinIcon(L, color, dest.name, true) }).addTo(map);
       for (const s of stops) {
@@ -126,7 +129,8 @@ export function PickMap({
   const color = categoryOf(category).color;
   const ref = useLeafletMap(
     (L, map) => {
-      const line = L.polyline(route, { color, weight: 3, opacity: 0.85 }).addTo(map);
+      L.polyline(route, { color: casing(), weight: 7, opacity: 0.9 }).addTo(map);
+      const line = L.polyline(route, { color, weight: 3.5, opacity: 1 }).addTo(map);
       L.marker([HOME.lat, HOME.lng], { icon: homeIcon(L) }).addTo(map);
       const pin = L.marker([lat, lng], { icon: pinIcon(L, color, undefined, true), draggable: true }).addTo(map);
       pin.on("dragend", () => {
@@ -140,17 +144,17 @@ export function PickMap({
   return <div ref={ref} className={`isolate ${className ?? ""}`} />;
 }
 
-// Leave room for the title and chips on top and the dock below on phones,
+// Leave room for the title and chips on top and the bar below on phones,
 // and for the ride list panel on the left on desktop.
 const wideScreen = () => window.matchMedia("(min-width: 1024px)").matches;
 const fitAll = () =>
   wideScreen()
-    ? { paddingTopLeft: [400, 60] as [number, number], paddingBottomRight: [60, 60] as [number, number] }
-    : { paddingTopLeft: [36, 130] as [number, number], paddingBottomRight: [36, 110] as [number, number] };
+    ? { paddingTopLeft: [420, 60] as [number, number], paddingBottomRight: [60, 60] as [number, number] }
+    : { paddingTopLeft: [36, 150] as [number, number], paddingBottomRight: [36, 110] as [number, number] };
 const fitOne = () =>
   wideScreen()
-    ? { paddingTopLeft: [420, 80] as [number, number], paddingBottomRight: [80, 200] as [number, number] }
-    : { paddingTopLeft: [40, 130] as [number, number], paddingBottomRight: [40, 230] as [number, number] };
+    ? { paddingTopLeft: [440, 80] as [number, number], paddingBottomRight: [80, 200] as [number, number] }
+    : { paddingTopLeft: [40, 150] as [number, number], paddingBottomRight: [40, 250] as [number, number] };
 
 export type CrewMapItem = {
   id: string;
@@ -189,7 +193,7 @@ export function CrewMap({
       const byId = new Map();
       for (const d of items) {
         const color = categoryOf(d.category).color;
-        const line = L.polyline(d.route, { color, weight: 2, opacity: 0.55 }).addTo(map);
+        const line = L.polyline(d.route, { color, weight: 3, opacity: 0.85 }).addTo(map);
         const marker = L.marker([d.lat, d.lng], { icon: pinIcon(L, color, d.name) })
           .on("click", (e) => {
             L.DomEvent.stopPropagation(e);
@@ -218,7 +222,7 @@ export function CrewMap({
     for (const [id, { line, marker, item }] of byId) {
       const color = categoryOf(item.category).color;
       const on = id === selected;
-      line.setStyle({ weight: on ? 4 : 2, opacity: selected ? (on ? 1 : 0.12) : 0.55 });
+      line.setStyle({ weight: on ? 5 : 3, opacity: selected ? (on ? 1 : 0.2) : 0.85 });
       if (on) line.bringToFront();
       marker.setIcon(pinIcon(L, color, on || !selected ? item.name : undefined, on));
       marker.setZIndexOffset(on ? 1000 : 0);

@@ -6,9 +6,9 @@ export const HOME = { name: "Bengaluru", short: "BLR", lat: 12.9716, lng: 77.594
 export const REGISTRATION_DAYS = 3;
 
 export const CATEGORIES = {
-  short: { label: "Short ride", short: "Short", hint: "Breakfast run, back by lunch", color: "#2dd4bf" },
-  day: { label: "Day ride", short: "Day ride", hint: "Leave at dawn, home by night", color: "#fbbf24" },
-  multi: { label: "Multi-day", short: "Multi-day", hint: "Pack a bag", color: "#c084fc" },
+  short: { label: "Short ride", short: "Short", hint: "Breakfast run, back by lunch", color: "#13a189" },
+  day: { label: "Day ride", short: "Day ride", hint: "Leave at dawn, home by night", color: "#3a78f0" },
+  multi: { label: "Multi-day", short: "Multi-day", hint: "Pack a bag", color: "#e2513a" },
 } as const;
 export type Category = keyof typeof CATEGORIES;
 export const CATEGORY_KEYS = Object.keys(CATEGORIES) as Category[];
@@ -21,26 +21,26 @@ export function suggestCategory(roundTripKm: number): Category {
 }
 
 export const ROAD_TAGS = {
-  twisties: "🌀 Twisties",
-  ghat: "⛰️ Ghat section",
-  highway: "🛣️ Highway",
-  scenic: "🌄 Scenic",
-  offroad: "🪨 Off-road",
-  broken: "🕳️ Broken patches",
-  forest: "🌳 Forest",
-  coastal: "🌊 Coastal",
-  food: "🍛 Great food",
-  stay: "🏕️ Good stays",
+  twisties: "Twisties",
+  ghat: "Ghat section",
+  highway: "Highway",
+  scenic: "Scenic",
+  offroad: "Off-road",
+  broken: "Broken patches",
+  forest: "Forest",
+  coastal: "Coastal",
+  food: "Great food",
+  stay: "Good stays",
 } as const;
 export type RoadTag = keyof typeof ROAD_TAGS;
 export const ROAD_TAG_KEYS = Object.keys(ROAD_TAGS) as RoadTag[];
 
 export const SEASONS = {
-  winter: "❄️ Winter",
-  summer: "☀️ Summer",
-  monsoon: "🌧️ Monsoon",
-  postmonsoon: "🌿 Post-monsoon",
-  anytime: "📅 Any time",
+  winter: "Winter",
+  summer: "Summer",
+  monsoon: "Monsoon",
+  postmonsoon: "Post-monsoon",
+  anytime: "Any time",
 } as const;
 export type Season = keyof typeof SEASONS;
 export const SEASON_KEYS = Object.keys(SEASONS) as Season[];
@@ -64,16 +64,17 @@ export const STOP_KINDS = {
 export type StopKind = keyof typeof STOP_KINDS;
 export const STOP_KIND_KEYS = Object.keys(STOP_KINDS) as StopKind[];
 
-/** Label for a tag: known tags get their emoji label, custom ones get a hash. */
+/** Label for a tag: known tags get their name, custom ones get a hash. */
 export function tagLabel(tag: string) {
   return tag in ROAD_TAGS ? ROAD_TAGS[tag as RoadTag] : `#${tag}`;
 }
 
+/** Coloured like Indian kilometre stones: yellow NH, green SH, orange village roads. */
 export const ROAD_SPLIT_LABELS = {
-  city: { label: "City", color: "#71717a" },
-  nh: { label: "National hwy", color: "#60a5fa" },
-  sh: { label: "State hwy", color: "#fbbf24" },
-  other: { label: "Country roads", color: "#4ade80" },
+  city: { label: "City", color: "#8d8f88" },
+  nh: { label: "National highway", color: "#f2be00" },
+  sh: { label: "State highway", color: "#20a059" },
+  other: { label: "Country roads", color: "#f07a1f" },
 } as const;
 
 export const REACTIONS = ["🔥", "🤘", "😍", "🏍️", "🥶", "👀"] as const;

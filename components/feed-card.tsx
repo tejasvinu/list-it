@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { MapPin, MessageCircle, Send } from "lucide-react";
+import { Clock, MessageCircle, Share } from "lucide-react";
 import { Avatar } from "./avatar";
+import { HairpinIcon, Milestone } from "./milestone";
 import { RouteArt } from "./route-art";
 import { InButton, ReactionButton, ReactionSummary, useReactions } from "./social";
 import { shareLink } from "./toast";
@@ -14,52 +15,73 @@ import { categoryOf, duration, km, prettyDate, splitSummary, timeAgo } from "@/l
 import type { FeedItem } from "@/lib/data";
 import type { RiderLite } from "@/lib/types";
 
+/**
+ * Where a ride stands, as a small pill. Wishlist is the default state, so it
+ * shows nothing unless `always` is set.
+ */
 export function StatusChip({
   status,
   date,
   ridden = [],
   meId,
+  always = false,
 }: {
   status: string;
   date: string | null;
   ridden?: FeedItem["riddenBy"];
   meId?: string;
+  always?: boolean;
 }) {
-  const chip = "inline-flex max-w-[180px] items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-semibold";
+  const chip = "inline-flex h-7 max-w-[240px] items-center whitespace-pre rounded-full px-2.5 text-[13px] font-semibold";
   if (ridden.length) {
-    const who = ridden.length > 1 ? `${ridden.length}` : ridden[0].rider.id === meId ? "you" : ridden[0].rider.name;
+    const who = ridden.length > 1 ? `${ridden.length} riders` : ridden[0].rider.id === meId ? "you" : ridden[0].rider.name;
     const last = ridden[0].date;
     return (
-      <span className={`${chip} bg-emerald-400/15 text-emerald-300`}>
-        <span>🏁</span>
+      <span className={`${chip} bg-good-soft text-good`}>
         <span className="truncate">Ridden by {who}</span>
-        {last && <span className="shrink-0 opacity-75">· {prettyDate(last, { day: "numeric", month: "short" })}</span>}
+        {last && <span className="num shrink-0 font-medium opacity-80">, {prettyDate(last, { day: "numeric", month: "short" })}</span>}
       </span>
     );
   }
+  if (status === "planned")
+    return (
+      <span className={`${chip} bg-accent text-on-accent`}>
+        Planned{date && <span className="num font-medium">, {prettyDate(date, { weekday: "short", day: "numeric", month: "short" })}</span>}
+      </span>
+    );
+  if (status === "hailmary") return <span className={`${chip} bg-surface-3 text-text`}>Hail Mary</span>;
+  if (!always) return null;
   const s = STATUSES[(status in STATUSES ? status : "wishlist") as Status];
-  const tone =
-    status === "planned"
-      ? "bg-accent/15 text-accent-2"
-      : status === "hailmary"
-        ? "bg-fuchsia-400/15 text-fuchsia-300"
-        : "bg-white/8 text-muted";
+  return <span className={`${chip} bg-surface-2 text-muted`}>{s.label}</span>;
+}
+
+/** Ride length, as a coloured dot and its name. Plain text, not a control. */
+export function CategoryLabel({ category, className = "" }: { category: string; className?: string }) {
+  const c = categoryOf(category);
   return (
-    <span className={`${chip} ${tone}`}>
-      <span>{s.emoji}</span>
-      {s.label}
-      {date && status === "planned" && <span className="opacity-75">· {prettyDate(date, { day: "numeric", month: "short" })}</span>}
+    <span className={`inline-flex items-center gap-1.5 ${className}`}>
+      <span className="h-2.5 w-2.5 rounded-full" style={{ background: c.color }} />
+      {c.short}
     </span>
   );
 }
 
-export function CategoryChip({ category }: { category: string }) {
-  const c = categoryOf(category);
+/** Time, hairpins and ride length on one line. */
+export function RideFacts({ item, className = "" }: { item: Pick<FeedItem, "durationMin" | "hairpins" | "category">; className?: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/55 px-2.5 py-1 text-[12px] font-semibold backdrop-blur-md">
-      <span className="h-1.5 w-1.5 rounded-full" style={{ background: c.color, boxShadow: `0 0 8px ${c.color}` }} />
-      {c.short}
-    </span>
+    <p className={`num flex flex-wrap items-center gap-x-4 gap-y-1 text-[15px] text-muted ${className}`}>
+      <span className="inline-flex items-center gap-1.5">
+        <Clock size={15} strokeWidth={2} />
+        {duration(item.durationMin)} riding
+      </span>
+      {item.hairpins ? (
+        <span className="inline-flex items-center gap-1.5">
+          <HairpinIcon size={15} />
+          {item.hairpins} hairpins
+        </span>
+      ) : null}
+      <CategoryLabel category={item.category} />
+    </p>
   );
 }
 
@@ -72,6 +94,7 @@ export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: s
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const slides = 1 + item.photos.length;
   const summary = splitSummary(item.roadSplit);
+  const tags = item.tags.map(tagLabel);
 
   // Single tap opens the ride, double tap fires a 🔥.
   const onMediaTap = () => {
@@ -90,33 +113,10 @@ export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: s
   };
 
   return (
-    <article className="border-b border-line pb-5 last:border-b-0">
-      <header className="flex items-center gap-3 px-4 py-3">
-        <Link href={`/g/${slug}/r/${item.owner.id}`}>
-          <Avatar rider={item.owner} size={36} />
-        </Link>
-        <div className="min-w-0 flex-1 leading-tight">
-          <p className="truncate text-[14px]">
-            <Link href={`/g/${slug}/r/${item.owner.id}`} className="font-semibold">
-              {item.owner.name}
-            </Link>
-            <span className="text-faint" suppressHydrationWarning>
-              {" "}
-              · {timeAgo(item.createdAt)}
-            </span>
-          </p>
-          {item.area && (
-            <p className="mt-0.5 flex items-center gap-1 truncate text-[12px] text-muted">
-              <MapPin size={11} /> {item.area}
-            </p>
-          )}
-        </div>
-        <StatusChip status={item.status} date={item.statusDate} ridden={item.riddenBy} meId={me.id} />
-      </header>
-
-      <div className="relative mx-3 overflow-hidden rounded-[22px] border border-line bg-surface">
+    <article className="pb-10">
+      <div className="relative mx-4 overflow-hidden rounded-panel bg-surface-2 lg:mx-0">
         <div
-          className="no-scrollbar flex aspect-[5/4] snap-x snap-mandatory overflow-x-auto"
+          className="no-scrollbar flex aspect-[16/11] snap-x snap-mandatory overflow-x-auto"
           onScroll={(e) => {
             const el = e.currentTarget;
             setSlide(Math.round(el.scrollLeft / el.clientWidth));
@@ -124,57 +124,32 @@ export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: s
           onClick={onMediaTap}
         >
           <div className="relative h-full w-full shrink-0 snap-center">
-            <RouteArt id={item.id} route={item.route} category={item.category} width={500} height={400} bottomRoom={0.22} map className="h-full w-full" />
+            <RouteArt id={item.id} route={item.route} category={item.category} width={520} height={358} map className="h-full w-full" />
           </div>
           {item.photos.map((p, i) => (
             <div key={p.thumb} className="relative h-full w-full shrink-0 snap-center bg-surface-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={p.thumb}
-                alt={p.title}
-                loading={priority && i === 0 ? "eager" : "lazy"}
-                className="h-full w-full object-cover"
-              />
+              <img src={p.thumb} alt={p.title} loading={priority && i === 0 ? "eager" : "lazy"} className="h-full w-full object-cover" />
               <a
                 href={p.page}
                 target="_blank"
                 rel="noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="absolute bottom-[84px] right-3 max-w-[70%] truncate rounded-full bg-black/55 px-2 py-0.5 text-[10px] text-white/70 backdrop-blur"
+                className="absolute bottom-2 left-2 max-w-[60%] truncate rounded-[3px] bg-[var(--scrim)] px-1.5 py-0.5 text-[11px] text-white/85"
               >
-                📷 {p.credit ?? "Wikimedia Commons"}
+                Photo: {p.credit ?? "Wikimedia Commons"}
               </a>
             </div>
           ))}
         </div>
 
-        {/* Overlays */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-3">
-          <CategoryChip category={item.category} />
-          {slides > 1 && (
-            <span className="rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-semibold tabular-nums backdrop-blur-md">
-              {slide + 1}/{slides}
-            </span>
-          )}
-        </div>
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-4 pb-3.5 pt-14">
-          <h2 className="font-display text-[26px] font-bold leading-none tracking-tight drop-shadow">{item.name}</h2>
-          <p className="mt-1.5 flex flex-wrap items-center gap-x-2.5 text-[13px] font-medium text-white/80">
-            <span>{km(item.distanceKm)} round trip</span>
-            <span className="text-white/30">•</span>
-            <span>{duration(item.durationMin)} riding</span>
-            {item.hairpins ? (
-              <>
-                <span className="text-white/30">•</span>
-                <span>🌀 {item.hairpins}</span>
-              </>
-            ) : null}
-          </p>
+        <div className="pointer-events-none absolute left-3 top-3">
+          <StatusChip status={item.status} date={item.statusDate} ridden={item.riddenBy} meId={me.id} />
         </div>
         {slides > 1 && (
-          <div className="pointer-events-none absolute inset-x-0 top-[19px] flex justify-center gap-1">
+          <div className="pointer-events-none absolute right-3 top-3 flex gap-1 rounded-full bg-[var(--scrim)] px-2 py-1.5" aria-hidden>
             {Array.from({ length: slides }, (_, i) => (
-              <span key={i} className={`h-1 rounded-full transition-all ${i === slide ? "w-4 bg-white" : "w-1 bg-white/40"}`} />
+              <span key={i} className={`h-1.5 rounded-full transition-[width,background-color] ${i === slide ? "w-4 bg-white" : "w-1.5 bg-white/45"}`} />
             ))}
           </div>
         )}
@@ -184,10 +159,10 @@ export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: s
             <motion.span
               key={burst}
               initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: [0, 1.4, 1], opacity: [0, 1, 1, 0] }}
+              animate={{ scale: [0, 1.3, 1], opacity: [0, 1, 1, 0] }}
               transition={{ duration: 0.9, times: [0, 0.3, 0.6, 1] }}
               onAnimationComplete={() => setBurst(0)}
-              className="pointer-events-none absolute inset-0 grid place-items-center text-[96px] drop-shadow-[0_0_30px_rgba(255,122,26,0.8)]"
+              className="pointer-events-none absolute inset-0 grid place-items-center text-[96px]"
             >
               🔥
             </motion.span>
@@ -195,10 +170,48 @@ export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: s
         </AnimatePresence>
       </div>
 
-      <div className="mt-1.5 flex items-center gap-0.5 px-2">
+      <div className="flex items-start gap-4 px-4 pt-3 lg:px-0">
+        <Link href={href} className="min-w-0 flex-1 pt-1">
+          <h2 className="display text-[34px] leading-[0.95] lg:text-[40px]">{item.name}</h2>
+          {item.area && <p className="mt-1 truncate text-[15px] text-muted">{item.area}</p>}
+        </Link>
+        <Link href={href} className="-mt-14 mr-1 shrink-0" aria-label={`Open ${item.name}`}>
+          <Milestone name={item.name} distanceKm={item.distanceKm} split={item.roadSplit} approx={item.approx} size={15} />
+        </Link>
+      </div>
+
+      <div className="space-y-3 px-4 pt-3 lg:px-0">
+        <RideFacts item={item} />
+        {item.notes && (
+          <p className="line-clamp-2 text-[16px] leading-snug">
+            <Link href={`/g/${slug}/r/${item.owner.id}`} className="font-semibold">
+              {item.owner.name}
+            </Link>{" "}
+            {item.notes}
+          </p>
+        )}
+        {item.rideReport && (
+          <p className="line-clamp-2 border-l-[3px] border-good pl-3 text-[15px] text-muted">
+            <span className="font-semibold text-good">Ride report </span>
+            {item.rideReport}
+          </p>
+        )}
+        {(summary || tags.length > 0) && (
+          <p className="text-[14px] text-faint">
+            {[summary, ...tags].filter(Boolean).join(", ")}
+          </p>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center gap-1 px-2.5 lg:px-0 lg:-ml-2.5">
         <ReactionButton mine={state.mine} onPick={set} />
-        <Link href={`${href}#comments`} className="grid h-10 w-10 place-items-center" aria-label="Comments">
-          <MessageCircle size={23} strokeWidth={1.9} />
+        <Link
+          href={`${href}#comments`}
+          className="num flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-full px-2 text-[15px] text-muted hover:text-text"
+          aria-label={item.commentCount ? `${item.commentCount} comments` : "Comment"}
+        >
+          <MessageCircle size={21} strokeWidth={1.9} />
+          {item.commentCount > 0 && item.commentCount}
         </Link>
         <button
           onClick={() =>
@@ -208,82 +221,55 @@ export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: s
               url: `${location.origin}${href}`,
             })
           }
-          className="grid h-10 w-10 place-items-center"
+          className="grid h-11 w-11 place-items-center rounded-full text-muted hover:text-text"
           aria-label="Share"
         >
-          <Send size={21} strokeWidth={1.9} />
+          <Share size={20} strokeWidth={1.9} />
         </button>
-        <div className="ml-auto">
+        <div className="ml-auto pr-1.5 lg:pr-0">
           <InButton slug={slug} id={item.id} me={me} imIn={item.imIn} interested={item.interested} compact />
         </div>
       </div>
 
-      <div className="space-y-1.5 px-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-2 text-[14px] text-faint lg:px-0">
         <ReactionSummary list={state.list} meId={me.id} />
-        {(summary || item.tags.length > 0) && (
-          <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 pt-0.5">
-            {summary && (
-              <span className="shrink-0 rounded-full border border-line px-2.5 py-1 text-[12px] text-muted">🛣️ {summary}</span>
-            )}
-            {item.tags.map((t) => (
-              <span key={t} className="shrink-0 rounded-full border border-line px-2.5 py-1 text-[12px] text-muted">
-                {tagLabel(t)}
-              </span>
-            ))}
-          </div>
+        <span className="inline-flex items-center gap-1.5" suppressHydrationWarning>
+          <Avatar rider={item.owner} size={20} />
+          {item.owner.id === me.id ? "You" : item.owner.name} added this {timeAgo(item.createdAt)} ago
+        </span>
+        {item.stopCount > 0 && (
+          <Link href={`${href}#stops`} className="underline decoration-line-strong underline-offset-4 hover:text-text">
+            {item.stopCount} stop{item.stopCount === 1 ? "" : "s"} on the way
+          </Link>
         )}
-        {item.notes && (
-          <p className="line-clamp-2 text-[14px] leading-snug">
-            <span className="font-semibold">{item.owner.name}</span> <span className="text-text/90">{item.notes}</span>
-          </p>
-        )}
-        {item.rideReport && (
-          <p className="line-clamp-2 rounded-xl bg-emerald-400/8 px-3 py-2 text-[13px] text-emerald-100/90">
-            🏁 {item.rideReport}
-          </p>
-        )}
-        <div className="flex gap-3 text-[13px] text-faint">
-          {item.commentCount > 0 && (
-            <Link href={`${href}#comments`}>
-              View {item.commentCount === 1 ? "1 comment" : `all ${item.commentCount} comments`}
-            </Link>
-          )}
-          {item.stopCount > 0 && (
-            <Link href={`${href}#stops`}>
-              {item.stopCount} stop{item.stopCount === 1 ? "" : "s"} on the way
-            </Link>
-          )}
-        </div>
       </div>
     </article>
   );
 }
 
-/** One-line row for the compact feed: thumbnail, name and the numbers that matter. */
+/** One row for the compact list: the stone, the name and the numbers that matter. */
 export function CompactCard({ item, slug, me }: { item: FeedItem; slug: string; me: RiderLite }) {
-  const cat = categoryOf(item.category);
   return (
     <Link
       href={`/g/${slug}/d/${item.id}`}
-      className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-2 pr-3 transition hover:border-line-strong hover:bg-surface-2 active:scale-[0.99]"
+      className="flex items-center gap-4 rounded-panel bg-surface p-3 pr-4 transition-colors hover:bg-surface-2 active:scale-[0.995]"
     >
-      <span className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl">
-        <RouteArt id={`c-${item.id}`} route={item.route} category={item.category} width={72} height={72} labels={false} map className="h-full w-full" />
+      <span className="relative h-[76px] w-[76px] shrink-0 overflow-hidden rounded-[4px]">
+        <RouteArt id={`c-${item.id}`} route={item.route} category={item.category} width={76} height={76} labels={false} animate={false} className="h-full w-full" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: cat.color }} />
-          <span className="truncate font-display text-[17px] font-bold leading-tight">{item.name}</span>
-        </span>
-        <span className="mt-0.5 block text-[13px] text-muted">
-          {km(item.distanceKm)} · {duration(item.durationMin)}
-          {item.hairpins ? ` · 🌀 ${item.hairpins}` : ""}
+        <span className="display block truncate text-[24px]">{item.name}</span>
+        <span className="num mt-1 flex flex-wrap items-center gap-x-3 text-[14px] text-muted">
+          <span>{duration(item.durationMin)}</span>
+          {item.hairpins ? <span>{item.hairpins} hairpins</span> : null}
+          <CategoryLabel category={item.category} />
         </span>
         <span className="mt-1.5 flex items-center gap-2">
           <StatusChip status={item.status} date={item.statusDate} ridden={item.riddenBy} meId={me.id} />
-          {item.interested.length > 0 && <span className="text-[12px] text-faint">{item.interested.length} in</span>}
+          {item.interested.length > 0 && <span className="text-[13px] text-faint">{item.interested.length} in</span>}
         </span>
       </span>
+      <Milestone name={item.name} distanceKm={item.distanceKm} split={item.roadSplit} approx={item.approx} size={11} />
     </Link>
   );
 }

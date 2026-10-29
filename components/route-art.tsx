@@ -8,10 +8,11 @@ type Props = {
   width?: number;
   height?: number;
   animate?: boolean;
+  /** Name home on the drawing. Defaults to on without map tiles, off with them. */
   labels?: boolean;
   /** Fraction of the height kept clear at the bottom, e.g. for a title overlay */
   bottomRoom?: number;
-  /** Draw darkened OpenStreetMap tiles under the route instead of the dotted canvas */
+  /** Draw grey OpenStreetMap tiles under the route instead of a plain ground */
   map?: boolean;
   className?: string;
 };
@@ -23,10 +24,12 @@ const mercator = (lat: number, lng: number) => {
 };
 
 /**
- * The route drawn as art: Bengaluru out to the destination and back,
- * on a dark dotted canvas, or with `map`, over darkened map tiles.
+ * The route drawn as a road on a map: Bengaluru out to the destination and back,
+ * on a plain ground, or with `map`, over grey tiles (day or night, from the theme).
  */
-export function RouteArt({ id, route, category, width = 400, height = 300, animate = true, labels = true, bottomRoom = 0, map = false, className }: Props) {
+export function RouteArt({ id, route, category, width = 400, height = 300, animate = true, labels, bottomRoom = 0, map = false, className }: Props) {
+  // Map tiles already name the city, so only the plain drawing labels home by default.
+  labels ??= !map;
   const color = categoryOf(category).color;
   const pts = route.length >= 2 ? route : [[HOME.lat, HOME.lng] as [number, number], [HOME.lat + 0.1, HOME.lng + 0.1] as [number, number]];
 
@@ -86,75 +89,72 @@ export function RouteArt({ id, route, category, width = 400, height = 300, anima
   const [hx, hy] = project(HOME.lat, HOME.lng);
   const [dx, dy] = project(far[0], far[1]);
   const gid = `rg-${id}`;
+  const stroke = Math.max(2.5, Math.min(width, height) / 110);
+
+  const tileImages = tiles.map((t) => (
+    // Overlap by a hair so seams between tiles don't show.
+    <image key={t.href + t.x} href={t.href} x={t.x} y={t.y} width={t.size + 1} height={t.size + 1} preserveAspectRatio="none" />
+  ));
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className={className} preserveAspectRatio="xMidYMid slice" aria-hidden>
-      <defs>
-        <pattern id={`${gid}-dots`} width="14" height="14" patternUnits="userSpaceOnUse">
-          <circle cx="1" cy="1" r="1" fill="rgba(255,255,255,0.07)" />
-        </pattern>
-        <radialGradient id={`${gid}-glow`} cx={(dx / width).toFixed(3)} cy={(dy / height).toFixed(3)} r="0.6">
-          <stop offset="0" stopColor={color} stopOpacity="0.28" />
-          <stop offset="1" stopColor={color} stopOpacity="0" />
-        </radialGradient>
-        <linearGradient id={`${gid}-line`} gradientUnits="userSpaceOnUse" x1={hx} y1={hy} x2={dx} y2={dy}>
-          <stop offset="0" stopColor="#ffffff" stopOpacity="0.55" />
-          <stop offset="1" stopColor={color} />
-        </linearGradient>
-        <filter id={`${gid}-blur`} x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="5" />
-        </filter>
-        {map && (
-          // Same look as the Leaflet maps' .dark-tiles: invert, turn the hues back, then mute.
-          <filter id={`${gid}-dark`} colorInterpolationFilters="sRGB">
-            <feColorMatrix type="matrix" values="-1 0 0 0 1  0 -1 0 0 1  0 0 -1 0 1  0 0 0 1 0" />
-            <feColorMatrix type="hueRotate" values="180" />
-            <feColorMatrix type="saturate" values="0.35" />
+      {map && (
+        <defs>
+          {/* Day: grey and a little lifted. Night: inverted to asphalt. Matches .map-tiles on the Leaflet maps. */}
+          <filter id={`${gid}-day`} colorInterpolationFilters="sRGB">
+            <feColorMatrix type="saturate" values="0" />
             <feComponentTransfer>
-              <feFuncR type="linear" slope="0.72" intercept="0.02" />
-              <feFuncG type="linear" slope="0.72" intercept="0.02" />
-              <feFuncB type="linear" slope="0.72" intercept="0.03" />
+              <feFuncR type="linear" slope="0.86" intercept="0.12" />
+              <feFuncG type="linear" slope="0.86" intercept="0.12" />
+              <feFuncB type="linear" slope="0.86" intercept="0.11" />
             </feComponentTransfer>
           </filter>
-        )}
-      </defs>
-      <rect width={width} height={height} fill="#0e0e12" />
-      {map ? (
-        <g filter={`url(#${gid}-dark)`}>
-          {tiles.map((t) => (
-            // Overlap by a hair so seams between tiles don't show.
-            <image key={t.href + t.x} href={t.href} x={t.x} y={t.y} width={t.size + 1} height={t.size + 1} preserveAspectRatio="none" />
-          ))}
-        </g>
-      ) : (
-        <rect width={width} height={height} fill={`url(#${gid}-dots)`} />
+          <filter id={`${gid}-night`} colorInterpolationFilters="sRGB">
+            <feColorMatrix type="saturate" values="0" />
+            <feColorMatrix type="matrix" values="-1 0 0 0 1  0 -1 0 0 1  0 0 -1 0 1  0 0 0 1 0" />
+            <feComponentTransfer>
+              <feFuncR type="linear" slope="0.74" intercept="0.03" />
+              <feFuncG type="linear" slope="0.74" intercept="0.03" />
+              <feFuncB type="linear" slope="0.74" intercept="0.025" />
+            </feComponentTransfer>
+          </filter>
+        </defs>
       )}
-      <rect width={width} height={height} fill={`url(#${gid}-glow)`} />
-      <path d={d} fill="none" stroke={color} strokeOpacity="0.5" strokeWidth="7" filter={`url(#${gid}-blur)`} />
+      <rect width={width} height={height} style={{ fill: "var(--surface-2)" }} />
+      {map && (
+        <>
+          <g className="tiles-day" filter={`url(#${gid}-day)`}>
+            {tileImages}
+          </g>
+          <g className="tiles-night" filter={`url(#${gid}-night)`}>
+            {tileImages}
+          </g>
+        </>
+      )}
+      {/* A casing in the ground colour so the line reads on any tile. */}
+      <path d={d} fill="none" style={{ stroke: "var(--surface)" }} strokeOpacity="0.9" strokeWidth={stroke + 3} strokeLinecap="round" strokeLinejoin="round" />
       <path
         d={d}
         fill="none"
-        stroke={`url(#${gid}-line)`}
-        strokeWidth="3"
+        stroke={color}
+        strokeWidth={stroke}
         strokeLinecap="round"
         strokeLinejoin="round"
         pathLength={1}
         className={animate ? "route-draw" : undefined}
       />
-      <circle cx={hx} cy={hy} r="5" fill="#0e0e12" stroke="#fff" strokeWidth="2" />
-      <circle cx={dx} cy={dy} r="6" fill={color} className={animate ? "ping-soft" : undefined} opacity="0.6" />
-      <circle cx={dx} cy={dy} r="6" fill={color} stroke="#0e0e12" strokeWidth="2" />
+      <circle cx={hx} cy={hy} r={stroke + 2} style={{ fill: "var(--surface)", stroke: "var(--text)" }} strokeWidth="2" />
+      <circle cx={dx} cy={dy} r={stroke + 3} fill={color} style={{ stroke: "var(--surface)" }} strokeWidth="2.5" />
       {labels && (
         <text
           x={hx}
-          y={hy + (hy > height - 30 ? -12 : 20)}
+          y={hy + (hy > height - 30 ? -12 : 22)}
           textAnchor="middle"
-          fill="rgba(255,255,255,0.6)"
-          fontSize="11"
+          style={{ fill: "var(--text)", fontFamily: "var(--font-display)" }}
+          fontSize="13"
           fontWeight="700"
-          letterSpacing="1.5"
         >
-          {HOME.short}
+          {HOME.name}
         </text>
       )}
     </svg>

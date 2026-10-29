@@ -12,11 +12,12 @@ export function AdminLoginForm({ action }: { action: (prev: string | null, form:
         type="password"
         autoFocus
         placeholder="Admin secret"
-        className="w-full rounded-xl border border-line-strong bg-surface px-4 py-3 outline-none focus:border-accent"
+        aria-label="Admin secret"
+        className="field"
       />
       {error && <p className="text-sm text-danger">{error}</p>}
-      <button disabled={pending} className="w-full rounded-xl bg-text py-3 font-bold text-black disabled:opacity-50">
-        Enter
+      <button disabled={pending} className="btn btn-ink w-full !min-h-12">
+        Sign in
       </button>
     </form>
   );
@@ -38,7 +39,7 @@ export function MessageForm({
       <fieldset disabled={pending} className="contents">
         {children}
       </fieldset>
-      {message && <p className="mt-1.5 w-full text-xs text-accent-2">{message}</p>}
+      {message && <p role="status" className="mt-1.5 w-full text-[14px] text-muted">{message}</p>}
     </form>
   );
 }
@@ -53,10 +54,13 @@ export function CopyLink({ url }: { url: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="flex w-full items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-left text-[13px]"
+      className="field flex items-center gap-2 text-left text-[15px]"
     >
-      <span className="min-w-0 flex-1 truncate font-mono text-muted">{url}</span>
-      {copied ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
+      <span className="min-w-0 flex-1 truncate text-muted">{url}</span>
+      <span className="flex shrink-0 items-center gap-1.5 font-semibold">
+        {copied ? <Check size={16} className="text-good" /> : <Copy size={16} />}
+        {copied ? "Copied" : "Copy"}
+      </span>
     </button>
   );
 }

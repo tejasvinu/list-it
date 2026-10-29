@@ -1,13 +1,14 @@
 import Link from "next/link";
+import { Milestone } from "@/components/milestone";
 
 export default function NotFound() {
   return (
-    <main className="relative z-10 mx-auto flex min-h-dvh max-w-[480px] flex-col items-center justify-center px-6 text-center">
-      <p className="text-6xl">🛞</p>
-      <h1 className="mt-4 font-display text-3xl font-bold">Wrong turn</h1>
-      <p className="mt-2 text-muted">That link doesn&apos;t lead anywhere. It may have been mistyped, or the ride was deleted.</p>
-      <Link href="/" className="mt-6 rounded-full border border-line-strong bg-surface-2 px-5 py-2.5 font-semibold transition hover:bg-surface-3">
-        Home
+    <main className="mx-auto flex min-h-dvh max-w-[480px] flex-col justify-center px-6">
+      <Milestone name="Nowhere" distanceKm={0} split={null} size={20} className="self-start" />
+      <h1 className="display mt-8 text-[56px] leading-[0.9]">Wrong turn</h1>
+      <p className="mt-3 text-[17px] text-muted">That link doesn&apos;t lead anywhere. It may have been mistyped, or the ride was deleted.</p>
+      <Link href="/" className="btn btn-ink mt-8 self-start">
+        Back to list-it
       </Link>
     </main>
   );

@@ -15,14 +15,14 @@ export default async function CrewPage({ params }: PageProps<"/g/[slug]/crew">) 
 
   return (
     <div>
-      <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-line bg-bg/80 px-3 py-2.5 backdrop-blur-xl">
+      <header className="topbar flex items-center gap-2 px-2 pb-2 pt-[max(env(safe-area-inset-top),10px)] lg:static lg:bg-transparent lg:px-0 lg:pt-8 lg:shadow-none">
         <BackButton fallback={`/g/${slug}`} />
-        <h1 className="font-display text-xl font-bold">The crew</h1>
-        <span className="text-faint">{ctx.riders.length}</span>
+        <h1 className="display text-[30px] lg:text-[44px]">The crew</h1>
+        <span className="num display text-[30px] text-faint lg:text-[44px]">{ctx.riders.length}</span>
       </header>
 
-      <div className="mx-4 mt-4 flex items-start gap-3 rounded-2xl border border-line bg-surface p-3.5 text-sm">
-        {ctx.registrationOpen ? <UserPlus size={18} className="mt-0.5 text-accent" /> : <Lock size={18} className="mt-0.5 text-faint" />}
+      <div className="mx-4 mt-4 flex items-start gap-3 rounded-panel bg-surface p-4 text-[15px] lg:mx-0">
+        {ctx.registrationOpen ? <UserPlus size={18} className="mt-0.5 shrink-0" /> : <Lock size={18} className="mt-0.5 shrink-0 text-faint" />}
         <p className="text-muted">
           {ctx.registrationOpen ? (
             <>
@@ -38,21 +38,21 @@ export default async function CrewPage({ params }: PageProps<"/g/[slug]/crew">) 
         </p>
       </div>
 
-      <ul className="mt-2">
+      <ul className="mt-4 lg:-mx-3">
         {ctx.riders.map((r) => {
           const added = feed.filter((d) => d.riderId === r.id).length;
           const ridden = feed.filter((d) => d.riddenBy.some((x) => x.rider.id === r.id)).length;
           return (
             <li key={r.id}>
-              <Link href={`/g/${slug}/r/${r.id}`} className="flex items-center gap-3 px-4 py-3 active:bg-surface">
+              <Link href={`/g/${slug}/r/${r.id}`} className="flex items-center gap-4 rounded-panel px-4 py-3 transition-colors hover:bg-surface lg:px-3">
                 <Avatar rider={r} size={46} />
                 <div className="flex-1">
-                  <p className="font-semibold">
+                  <p className="text-[17px] font-semibold">
                     {r.name}
-                    {r.id === ctx.viewer!.id && <span className="ml-1.5 text-xs font-normal text-faint">you</span>}
+                    {r.id === ctx.viewer!.id && <span className="ml-2 text-[14px] font-normal text-faint">you</span>}
                   </p>
-                  <p className="text-[13px] text-faint">
-                    {added} added · {ridden} ridden
+                  <p className="num text-[14px] text-muted">
+                    {added} added, {ridden} ridden
                   </p>
                 </div>
                 <ChevronRight size={18} className="text-faint" />

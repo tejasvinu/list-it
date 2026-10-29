@@ -3,30 +3,30 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Flame, Clock, LayoutList, Navigation, Rows3, UserPlus } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import { AvatarStack } from "./avatar";
 import { CompactCard, FeedCard } from "./feed-card";
-import { RouteArt } from "./route-art";
+import { Milestone } from "./milestone";
 import { shareLink } from "./toast";
 import { CATEGORIES } from "@/lib/config";
-import { daysUntil, km, prettyDate } from "@/lib/format";
+import { daysUntil, prettyDate } from "@/lib/format";
 import type { FeedItem } from "@/lib/data";
 import type { RiderLite } from "@/lib/types";
 
-const FILTERS = [
-  { key: "all", label: "All" },
+// Ride length is the main question; status and history are separate toggles.
+const LENGTHS = [
+  { key: "all", label: "All rides" },
   { key: "short", label: "Short", dot: CATEGORIES.short.color },
   { key: "day", label: "Day ride", dot: CATEGORIES.day.color },
   { key: "multi", label: "Multi-day", dot: CATEGORIES.multi.color },
-  { key: "hailmary", label: "🙏 Hail Mary" },
-  { key: "done", label: "🏁 Ridden" },
 ] as const;
-type FilterKey = (typeof FILTERS)[number]["key"];
+type LengthKey = (typeof LENGTHS)[number]["key"];
+type Only = "none" | "done" | "hailmary";
 
 const SORTS = [
-  { key: "fresh", label: "Fresh", icon: Clock },
-  { key: "hot", label: "Hot", icon: Flame },
-  { key: "near", label: "Closest", icon: Navigation },
+  { key: "fresh", label: "Newest" },
+  { key: "hot", label: "Most talked about" },
+  { key: "near", label: "Closest first" },
 ] as const;
 type SortKey = (typeof SORTS)[number]["key"];
 
@@ -49,7 +49,8 @@ export function FeedView({
   inviteOpen: boolean;
   closesAt: number;
 }) {
-  const [filter, setFilter] = useState<FilterKey>("all");
+  const [length, setLength] = useState<LengthKey>("all");
+  const [only, setOnly] = useState<Only>("none");
   const [sort, setSort] = useState<SortKey>("fresh");
   const [now] = useState(() => Date.now());
   const [compact, setCompact] = useState(false);
@@ -59,10 +60,10 @@ export function FeedView({
       setCompact(localStorage.getItem("feed-view") === "compact");
     } catch {}
   }, []);
-  const toggleView = () => {
-    setCompact(!compact);
+  const setView = (next: boolean) => {
+    setCompact(next);
     try {
-      localStorage.setItem("feed-view", compact ? "cards" : "compact");
+      localStorage.setItem("feed-view", next ? "compact" : "cards");
     } catch {}
   };
 
@@ -76,31 +77,32 @@ export function FeedView({
 
   const shown = useMemo(() => {
     let xs = items.filter((d) => {
-      if (filter === "all") return true;
-      if (filter === "done") return d.riddenBy.length > 0;
-      if (filter === "hailmary") return d.status === filter;
-      return d.category === filter;
+      if (length !== "all" && d.category !== length) return false;
+      if (only === "done") return d.riddenBy.length > 0;
+      if (only === "hailmary") return d.status === "hailmary";
+      return true;
     });
     if (sort === "hot") xs = [...xs].sort((a, b) => heat(b) - heat(a));
     if (sort === "near") xs = [...xs].sort((a, b) => a.distanceKm - b.distanceKm);
     return xs;
-  }, [items, filter, sort]);
+  }, [items, length, only, sort]);
 
   const ridden = items.filter((d) => d.riddenBy.length > 0);
-  const dreamKm = items.filter((d) => !d.riddenBy.length).reduce((s, d) => s + d.distanceKm, 0);
+  const toGoKm = items.filter((d) => !d.riddenBy.length).reduce((s, d) => s + d.distanceKm, 0);
   const hoursLeft = Math.max(0, Math.round((closesAt - now) / 3600000));
+  const filtered = length !== "all" || only !== "none";
 
   return (
     <div>
-      <header className="sticky top-0 z-30 border-b border-line bg-bg/80 px-4 pb-2 pt-3 backdrop-blur-xl">
+      <header className="topbar px-4 pb-3 pt-[max(env(safe-area-inset-top),14px)] lg:static lg:bg-transparent lg:px-0 lg:pt-10 lg:shadow-none">
         <div className="flex items-center gap-3">
-          <h1 className="min-w-0 flex-1 truncate font-display text-[24px] font-bold tracking-tight">{groupName}</h1>
-          <Link href={`/g/${slug}/crew`} className="flex items-center" aria-label="Crew">
-            <AvatarStack riders={riders} max={4} size={26} />
+          <h1 className="display min-w-0 flex-1 truncate text-[30px] lg:text-[44px]">{groupName}</h1>
+          <Link href={`/g/${slug}/crew`} className="flex h-11 items-center gap-2 rounded-full pr-1 text-[14px] text-muted" aria-label={`The crew, ${riders.length} riders`}>
+            <AvatarStack riders={riders} max={4} size={30} />
           </Link>
           {inviteOpen && (
             <motion.button
-              whileTap={{ scale: 0.92 }}
+              whileTap={{ scale: 0.95 }}
               onClick={() =>
                 shareLink({
                   title: groupName,
@@ -108,67 +110,52 @@ export function FeedView({
                   url: `${location.origin}/g/${slug}`,
                 })
               }
-              className="flex items-center gap-1.5 rounded-full bg-accent/15 px-3 py-1.5 text-[12px] font-semibold text-accent-2"
+              className="btn btn-quiet !min-h-10 !px-3.5 text-[14px]"
+              aria-label={`Invite riders, joining closes in ${hoursLeft} hours`}
             >
-              <UserPlus size={14} /> {hoursLeft < 48 ? `${hoursLeft}h` : `${Math.round(hoursLeft / 24)}d`}
+              <UserPlus size={16} /> {hoursLeft < 48 ? `${hoursLeft}h left` : `${Math.round(hoursLeft / 24)} days left`}
             </motion.button>
           )}
         </div>
-        <div className="no-scrollbar -mx-4 mt-2.5 flex gap-1.5 overflow-x-auto px-4">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className={`relative flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition-colors ${
-                filter === f.key ? "text-black" : "bg-surface-2 text-muted"
-              }`}
-            >
-              {filter === f.key && (
-                <motion.span layoutId="filter-pill" className="absolute inset-0 rounded-full bg-text" transition={{ type: "spring", stiffness: 500, damping: 38 }} />
-              )}
-              <span className="relative flex items-center gap-1.5">
-                {"dot" in f && <span className="h-2 w-2 rounded-full" style={{ background: f.dot }} />}
-                {f.label}
-              </span>
-            </button>
-          ))}
-        </div>
       </header>
 
-      {items.length > 0 && filter === "all" && (
-        <section className="px-4 pt-4">
-          <div className="grid grid-cols-3 gap-2">
-            <Stat value={String(items.length)} label="on the list" />
-            <Stat value={String(ridden.length)} label="ridden" />
-            <Stat value={km(dreamKm).replace(" km", "")} label="km to go" />
-          </div>
+      {items.length > 0 && !filtered && (
+        <section aria-label="Crew totals" className="mt-4 flex items-end gap-8 px-4 lg:mt-2 lg:px-0">
+          <Figure value={items.length.toLocaleString("en-IN")} label={items.length === 1 ? "ride on the list" : "rides on the list"} />
+          <Figure value={ridden.length.toLocaleString("en-IN")} label="ridden" />
+          <Figure value={Math.round(toGoKm).toLocaleString("en-IN")} label="km still to ride" />
         </section>
       )}
 
-      {upcoming.length > 0 && filter === "all" && (
-        <section className="pt-5">
-          <h3 className="mb-2.5 px-4 section-label">Up next</h3>
-          <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto px-4">
+      {upcoming.length > 0 && !filtered && (
+        <section className="mt-8">
+          <h2 className="display mb-3 px-4 text-[22px] lg:px-0">Up next</h2>
+          <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto px-4 lg:px-0">
             {upcoming.map((d) => {
               const days = daysUntil(d.statusDate!);
               return (
                 <Link
                   key={d.id}
                   href={`/g/${slug}/d/${d.id}`}
-                  className="relative h-[150px] w-[220px] shrink-0 snap-start overflow-hidden rounded-2xl border border-line"
+                  className="flex w-[290px] shrink-0 snap-start items-center gap-4 rounded-panel bg-accent p-4 text-on-accent transition-transform active:scale-[0.99]"
                 >
-                  <RouteArt id={`up-${d.id}`} route={d.route} category={d.category} width={220} height={150} labels={false} map className="absolute inset-0 h-full w-full" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
-                  <span className="absolute left-2.5 top-2.5 rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-black">
-                    {days === 0 ? "Today!" : days === 1 ? "Tomorrow" : `In ${days} days`}
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[14px] font-semibold">
+                      {days === 0 ? "Today" : days === 1 ? "Tomorrow" : `In ${days} days`}, {prettyDate(d.statusDate!)}
+                    </span>
+                    <span className="display mt-1 block truncate text-[28px]">{d.name}</span>
+                    <span className="mt-2 flex items-center gap-2 text-[14px]">
+                      {d.interested.length > 0 ? (
+                        <>
+                          <AvatarStack riders={d.interested} max={3} size={22} />
+                          {d.interested.length} in
+                        </>
+                      ) : (
+                        "Nobody in yet"
+                      )}
+                    </span>
                   </span>
-                  <div className="absolute inset-x-3 bottom-2.5">
-                    <p className="truncate font-display text-lg font-bold leading-tight">{d.name}</p>
-                    <div className="mt-1 flex items-center justify-between text-[12px] text-white/70">
-                      <span>{prettyDate(d.statusDate!)}</span>
-                      {d.interested.length > 0 && <AvatarStack riders={d.interested} max={3} size={18} />}
-                    </div>
-                  </div>
+                  <Milestone name={d.name} distanceKm={d.distanceKm} split={d.roadSplit} approx={d.approx} size={11} />
                 </Link>
               );
             })}
@@ -176,69 +163,101 @@ export function FeedView({
         </section>
       )}
 
-      <div className="flex items-center justify-between px-4 pb-1 pt-5">
-        <h3 className="section-label">
-          {filter === "all" ? "The list" : FILTERS.find((f) => f.key === filter)?.label}
-          <span className="ml-1.5 text-faint">{shown.length}</span>
-        </h3>
-        <div className="flex items-center gap-1.5">
-        <div className="flex rounded-full bg-surface-2 p-0.5">
-          {SORTS.map((s) => (
-            <button
-              key={s.key}
-              onClick={() => setSort(s.key)}
-              className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-semibold transition ${
-                sort === s.key ? "bg-surface-3 text-text" : "text-faint"
-              }`}
-            >
-              <s.icon size={12} /> {s.label}
+      <section aria-label="Filter rides" className="mt-8 space-y-3">
+        <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 lg:px-0">
+          {LENGTHS.map((f) => (
+            <button key={f.key} aria-pressed={length === f.key} onClick={() => setLength(f.key)} className="chip shrink-0">
+              {"dot" in f && <span className="h-2.5 w-2.5 rounded-full" style={{ background: f.dot }} />}
+              {f.label}
+            </button>
+          ))}
+          <span className="w-2 shrink-0" aria-hidden />
+          {(
+            [
+              ["done", "Ridden"],
+              ["hailmary", "Hail Mary"],
+            ] as const
+          ).map(([k, label]) => (
+            <button key={k} aria-pressed={only === k} onClick={() => setOnly(only === k ? "none" : k)} className="chip shrink-0">
+              {label}
             </button>
           ))}
         </div>
-          <button
-            onClick={toggleView}
-            className="grid h-[28px] w-[28px] place-items-center rounded-full bg-surface-2 text-muted hover:text-text"
-            aria-label={compact ? "Show full cards" : "Show compact list"}
-            title={compact ? "Full cards" : "Compact list"}
-          >
-            {compact ? <Rows3 size={14} /> : <LayoutList size={14} />}
-          </button>
+        <div className="flex items-center justify-between gap-3 px-4 lg:px-0">
+          <div className="flex min-h-11 items-center gap-3 whitespace-nowrap text-[15px]">
+            <span className="num font-semibold">
+              {shown.length} {shown.length === 1 ? "ride" : "rides"}
+            </span>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              aria-label="Sort rides"
+              className="min-h-9 rounded-full bg-transparent px-2 text-muted outline-none hover:text-text"
+            >
+              {SORTS.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div role="group" aria-label="Layout" className="flex rounded-full bg-surface-2 p-1">
+            {(
+              [
+                [false, "Cards"],
+                [true, "List"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={label}
+                aria-pressed={compact === value}
+                onClick={() => setView(value)}
+                className={`min-h-9 rounded-full px-3.5 text-[14px] font-semibold transition-colors ${compact === value ? "bg-surface text-text shadow-[0_1px_2px_rgb(0_0_0/0.12)]" : "text-faint hover:text-text"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
+      </section>
+
+      <div className={compact ? "mt-3 space-y-2 px-4 pb-8 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 lg:px-0" : "mt-5 lg:grid lg:grid-cols-2 lg:gap-x-10"}>
+        <AnimatePresence mode="popLayout" initial={false}>
+          {shown.map((item, i) => (
+            <motion.div
+              key={item.id}
+              layout
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 400, damping: 36 }}
+            >
+              {compact ? <CompactCard item={item} slug={slug} me={me} /> : <FeedCard item={item} slug={slug} me={me} priority={i < 2} />}
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
 
-      <AnimatePresence mode="popLayout" initial={false}>
-        {shown.map((item, i) => (
-          <motion.div
-            key={item.id}
-            layout
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.97 }}
-            transition={{ type: "spring", stiffness: 400, damping: 36 }}
-          >
-            {compact ? (
-              <div className="px-4 py-1">
-                <CompactCard item={item} slug={slug} me={me} />
-              </div>
-            ) : (
-              <FeedCard item={item} slug={slug} me={me} priority={i < 2} />
-            )}
-          </motion.div>
-        ))}
-      </AnimatePresence>
-
       {shown.length === 0 && (
-        <div className="flex flex-col items-center px-8 py-16 text-center">
-          <div className="mb-4 text-5xl">{items.length ? "🔍" : "🗺️"}</div>
-          <p className="font-display text-xl font-bold">{items.length ? "Nothing here yet" : "The list is empty"}</p>
-          <p className="mt-1.5 text-sm text-muted">
-            {items.length ? "Try another filter." : "Paste a Google Maps link and get the crew talking."}
+        <div className="px-4 py-16 lg:px-0">
+          <p className="display text-[30px]">{items.length ? "No rides match" : "The list is empty"}</p>
+          <p className="mt-2 max-w-[38ch] text-[16px] text-muted">
+            {items.length
+              ? "Try another ride length, or turn off Ridden and Hail Mary."
+              : "Paste a Google Maps link and the round trip from Bengaluru is worked out for you."}
           </p>
-          {!items.length && (
-            <Link
-              href={`/g/${slug}/new`}
-              className="mt-6 rounded-2xl btn-primary px-6 py-3 font-display font-bold text-black"
+          {items.length ? (
+            <button
+              className="btn btn-line mt-6"
+              onClick={() => {
+                setLength("all");
+                setOnly("none");
+              }}
             >
+              Show all rides
+            </button>
+          ) : (
+            <Link href={`/g/${slug}/new`} className="btn btn-ink mt-6">
               Add the first ride
             </Link>
           )}
@@ -248,11 +267,11 @@ export function FeedView({
   );
 }
 
-function Stat({ value, label }: { value: string; label: string }) {
+function Figure({ value, label }: { value: string; label: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-      <p className="font-display text-[24px] font-bold leading-none tracking-tight tabular-nums">{value}</p>
-      <p className="mt-1.5 text-[12px] text-faint">{label}</p>
-    </div>
+    <p className="min-w-0">
+      <span className="display num block text-[40px] font-extrabold lg:text-[52px]">{value}</span>
+      <span className="mt-1 block text-[14px] text-muted">{label}</span>
+    </p>
   );
 }

@@ -1,23 +1,36 @@
 @import "tailwindcss";
 
+/*
+ * Daylight by default, night ride when the phone is in dark mode.
+ * Every colour is defined once with light-dark(); see docs/redesign-2026.md.
+ */
 :root {
-  --bg: #08080a;
-  --surface: #121215;
-  --surface-2: #1a1a1f;
-  --surface-3: #25252c;
-  --line: rgba(255, 255, 255, 0.07);
-  --line-strong: rgba(255, 255, 255, 0.13);
-  --text: #f6f5f4;
-  --muted: #b0b0b9;
-  /* 5.4:1 on --bg, so helper text survives daylight */
-  --faint: #85858f;
-  --accent: #ff7a1a;
-  --accent-2: #ffb547;
-  --danger: #f43f5e;
-  --short: #2dd4bf;
-  --day: #fbbf24;
-  --multi: #c084fc;
-  color-scheme: dark;
+  color-scheme: light dark;
+  --bg: light-dark(#edeee9, #0e0f0d);
+  --surface: light-dark(#ffffff, #181917);
+  --surface-2: light-dark(#e2e3dd, #232421);
+  --surface-3: light-dark(#d5d6cf, #2f302d);
+  --line: light-dark(rgb(18 19 17 / 0.1), rgb(241 241 236 / 0.09));
+  --line-strong: light-dark(rgb(18 19 17 / 0.22), rgb(241 241 236 / 0.2));
+  --text: light-dark(#121311, #f1f1ec);
+  --muted: light-dark(#464842, #b7b8b1);
+  --faint: light-dark(#62645e, #8f918a);
+  --inverse: light-dark(#ffffff, #121311);
+  --accent: #ffc700;
+  --on-accent: #121311;
+  --accent-text: light-dark(#7a5c00, #ffd84d);
+  --accent-soft: light-dark(#fff1b8, #3a3312);
+  --danger: light-dark(#c42b2b, #ff6b62);
+  --good: light-dark(#17803f, #5bd08a);
+  --good-soft: light-dark(#dcefe2, #16291d);
+  --short: #13a189;
+  --day: #3a78f0;
+  --multi: #e2513a;
+  /* The milestone is a painted stone: it stays white in both themes. */
+  --stone: #f7f7f2;
+  --stone-ink: #121311;
+  --scrim: rgb(10 11 9 / 0.62);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @theme inline {
@@ -30,14 +43,20 @@
   --color-text: var(--text);
   --color-muted: var(--muted);
   --color-faint: var(--faint);
+  --color-inverse: var(--inverse);
   --color-accent: var(--accent);
-  --color-accent-2: var(--accent-2);
+  --color-on-accent: var(--on-accent);
+  --color-accent-text: var(--accent-text);
+  --color-accent-soft: var(--accent-soft);
   --color-danger: var(--danger);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
   --color-short: var(--short);
   --color-day: var(--day);
   --color-multi: var(--multi);
   --font-sans: var(--font-body);
   --font-display: var(--font-display);
+  --radius-panel: 6px;
 }
 
 html {
@@ -49,66 +68,168 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-body), system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
   overscroll-behavior-y: none;
+  font-feature-settings: "tnum" 0;
+  text-rendering: optimizeLegibility;
 }
 
-/* Ambient glow behind the phone-width column on wide screens */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(60rem 40rem at 50% -10%, rgba(255, 122, 26, 0.09), transparent 60%),
-    radial-gradient(40rem 30rem at 100% 100%, rgba(192, 132, 252, 0.05), transparent 60%);
-  z-index: 0;
+/* Headings and figures are set in the milestone face. */
+@utility display {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  line-height: 0.96;
 }
 
-/* Sentence-case section heading, replaces the old all-caps eyebrow */
-@utility section-label {
-  font-size: 13px;
+@utility num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Buttons: fully round, flat. Ink is primary; yellow means "you're in". */
+@utility btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding-inline: 1.25rem;
+  border-radius: 999px;
   font-weight: 600;
-  letter-spacing: -0.005em;
-  color: var(--muted);
-}
-
-/* Solid accent CTA with a lit top edge instead of a gradient and glow */
-@utility btn-primary {
-  background: var(--accent);
-  color: #0b0b0c;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.12),
-    0 1px 2px rgba(0, 0, 0, 0.4);
+  font-size: 15px;
+  line-height: 1;
+  white-space: nowrap;
   transition:
-    filter 150ms,
-    transform 150ms;
-  &:hover:not(:disabled) {
-    filter: brightness(1.06);
-  }
+    background-color 160ms var(--ease-out),
+    color 160ms var(--ease-out),
+    transform 160ms var(--ease-out),
+    opacity 160ms;
   &:active:not(:disabled) {
-    transform: scale(0.98);
+    transform: scale(0.97);
+  }
+  &:disabled {
+    cursor: not-allowed;
   }
 }
 
-/* Frosted chrome for floating bars and badges */
-@utility glass {
-  background: rgba(18, 18, 21, 0.72);
-  backdrop-filter: blur(20px) saturate(1.6);
-  -webkit-backdrop-filter: blur(20px) saturate(1.6);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 12px 32px -8px rgba(0, 0, 0, 0.6);
+@utility btn-ink {
+  background: var(--text);
+  color: var(--inverse);
+  &:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--text) 86%, var(--bg));
+  }
+  &:disabled {
+    background: var(--surface-3);
+    color: var(--faint);
+  }
 }
 
-:where(a, button, [role="button"], summary):focus-visible {
-  outline: 2px solid var(--accent);
+@utility btn-accent {
+  background: var(--accent);
+  color: var(--on-accent);
+  &:hover:not(:disabled) {
+    background: #ffd333;
+  }
+}
+
+@utility btn-quiet {
+  background: var(--surface-2);
+  color: var(--text);
+  &:hover:not(:disabled) {
+    background: var(--surface-3);
+  }
+  &:disabled {
+    color: var(--faint);
+  }
+}
+
+@utility btn-line {
+  background: transparent;
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  &:hover:not(:disabled) {
+    background: var(--surface-2);
+  }
+}
+
+/* Text inputs and text areas. */
+@utility field {
+  width: 100%;
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  padding: 0.75rem 0.875rem;
+  font-size: 16px;
+  color: var(--text);
+  outline: none;
+  transition: box-shadow 140ms var(--ease-out);
+  &::placeholder {
+    color: var(--faint);
+  }
+  &:focus,
+  &:focus-within {
+    box-shadow: inset 0 0 0 2px var(--text);
+  }
+}
+
+/* A selectable chip: filters, tags, seasons. Static facts are plain text. */
+@utility chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 36px;
+  padding-inline: 0.875rem;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition:
+    background-color 140ms var(--ease-out),
+    color 140ms var(--ease-out);
+  &:hover {
+    color: var(--text);
+  }
+  &[aria-pressed="true"],
+  &[aria-checked="true"] {
+    background: var(--text);
+    color: var(--inverse);
+    box-shadow: none;
+  }
+}
+
+@utility panel {
+  background: var(--surface);
+  border-radius: 6px;
+}
+
+/* Bars that stay at the top of a scrolling screen. Opaque, one line under them. */
+@utility topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--bg);
+  box-shadow: 0 1px 0 var(--line);
+}
+
+/* Things that float get the one shadow. */
+@utility float {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.08),
+    0 12px 32px -8px rgb(0 0 0 / 0.28);
+}
+
+:where(a, button, [role="button"], summary, input, textarea, select):focus-visible {
+  outline: 2px solid var(--text);
   outline-offset: 2px;
 }
 
 ::selection {
-  background: rgba(255, 122, 26, 0.35);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .no-scrollbar {
@@ -122,25 +243,133 @@ body::before {
   padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
 }
 
-/* Map pin labels: a dark pill so names stay legible over any tile */
+/* ---------- The milestone ---------- */
+
+/*
+ * Indian highway kilometre stone: a dome cap in the road class's colour
+ * over a whitewashed face with the distance painted on it. Size it with font-size.
+ */
+.milestone {
+  --cap: var(--accent);
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  width: 4.6em;
+  font-size: 14px;
+  color: var(--stone-ink);
+  background: var(--stone);
+  border-radius: 2.3em 2.3em 0.18em 0.18em;
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 0 1px rgb(18 19 17 / 0.12),
+    0 0.5em 1em -0.5em rgb(0 0 0 / 0.35);
+  text-align: center;
+  font-family: var(--font-display), system-ui, sans-serif;
+  line-height: 1;
+  flex-shrink: 0;
+}
+/* The cap carries the road class, as the real stone carries the highway number. */
+.milestone-cap {
+  display: grid;
+  place-items: end center;
+  height: 1.85em;
+  padding-bottom: 0.2em;
+  background: var(--cap);
+  font-weight: 800;
+  font-size: 1em;
+}
+.milestone-face {
+  padding: 0.4em 0.25em 0.46em;
+  font-variant-numeric: tabular-nums;
+}
+.milestone-face i {
+  display: block;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 0.8em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.milestone-face b {
+  display: block;
+  margin-top: 0.08em;
+  font-size: 1.72em;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.milestone-face small {
+  display: block;
+  margin-top: 0.12em;
+  font-size: 0.72em;
+  font-weight: 600;
+}
+
+/* ---------- Map ---------- */
+
+/* Leaflet pin labels: an opaque plate, like a direction board. */
 .map-label {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: rgba(14, 14, 17, 0.86);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
-  color: #f6f5f4;
-  font: 600 11px/1.2 var(--font-body), system-ui, sans-serif;
-  letter-spacing: -0.01em;
+  padding: 3px 7px 4px;
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow:
+    0 0 0 1px var(--line-strong),
+    0 2px 6px rgb(0 0 0 / 0.18);
+  font: 600 13px/1.1 var(--font-body), system-ui, sans-serif;
 }
 
-/* Route art drawing in */
+.leaflet-container {
+  background: var(--surface-2) !important;
+  font-family: var(--font-body), system-ui, sans-serif !important;
+}
+.leaflet-control-attribution {
+  background: color-mix(in oklab, var(--surface) 85%, transparent) !important;
+  color: var(--faint) !important;
+  font-size: 10px !important;
+  border-radius: 3px 0 0 0;
+}
+.leaflet-control-attribution a {
+  color: var(--muted) !important;
+}
+.leaflet-div-icon {
+  background: transparent !important;
+  border: none !important;
+}
+.leaflet-tooltip {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: 0 !important;
+  border-radius: 3px !important;
+  box-shadow: 0 0 0 1px var(--line-strong) !important;
+  font: 600 13px/1.2 var(--font-body), system-ui, sans-serif !important;
+}
+
+/* Grey tiles so the routes carry the colour. */
+.map-tiles {
+  filter: grayscale(1) contrast(0.88) brightness(1.06);
+}
+.tiles-night {
+  display: none;
+}
+@media (prefers-color-scheme: dark) {
+  .map-tiles {
+    filter: invert(1) grayscale(1) brightness(0.78) contrast(1.08);
+  }
+  .tiles-day {
+    display: none;
+  }
+  .tiles-night {
+    display: inline;
+  }
+}
+
+/* ---------- Motion ---------- */
+
 @keyframes draw {
   from {
     stroke-dashoffset: 1;
@@ -152,30 +381,47 @@ body::before {
 .route-draw {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
-  animation: draw 1.6s cubic-bezier(0.65, 0, 0.35, 1) 0.1s forwards;
+  animation: draw 1.4s cubic-bezier(0.65, 0, 0.35, 1) 0.1s forwards;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .route-draw {
-    animation: none;
-    stroke-dashoffset: 0;
-  }
-}
-
-@keyframes ping-soft {
-  0% {
-    transform: scale(1);
-    opacity: 0.7;
-  }
-  100% {
-    transform: scale(3.2);
+@keyframes settle {
+  from {
+    transform: translateY(14px) rotate(-3deg);
     opacity: 0;
   }
+  to {
+    transform: none;
+    opacity: 1;
+  }
 }
-.ping-soft {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: ping-soft 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+.settle {
+  animation: settle 700ms var(--ease-out) 0.45s both;
+}
+
+/* The landing page's one orchestrated moment: the headline rises, the photo settles. */
+@keyframes rise {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.rise {
+  animation: rise 800ms var(--ease-out) both;
+}
+@keyframes drift {
+  from {
+    transform: scale(1.08);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+.drift {
+  animation: drift 2.4s var(--ease-out) both;
 }
 
 @keyframes shimmer {
@@ -193,37 +439,25 @@ body::before {
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--surface) 55%, transparent), transparent);
   animation: shimmer 1.4s infinite;
 }
 
-/* Leaflet, dressed for the dark theme */
-.leaflet-container {
-  background: #0d0d10 !important;
-  font-family: var(--font-body), system-ui, sans-serif !important;
-}
-.leaflet-control-attribution {
-  background: rgba(9, 9, 11, 0.7) !important;
-  color: var(--faint) !important;
-  font-size: 9px !important;
-}
-.leaflet-control-attribution a {
-  color: var(--muted) !important;
-}
-.leaflet-bar a {
-  background: var(--surface-2) !important;
-  color: var(--text) !important;
-  border-color: var(--line) !important;
-}
-.dark-tiles {
-  filter: invert(1) hue-rotate(180deg) brightness(0.82) contrast(0.92) saturate(0.35);
-}
-.leaflet-div-icon {
-  background: transparent !important;
-  border: none !important;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .route-draw {
+    stroke-dashoffset: 0;
+  }
 }
 
-input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(1);
-  opacity: 0.6;
+input[type="date"] {
+  color-scheme: light dark;
 }

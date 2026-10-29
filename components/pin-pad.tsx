@@ -60,20 +60,20 @@ export function PinPad({
 
   return (
     <div className="flex flex-col items-center">
-      {label && <p className="mb-5 text-[15px] font-medium text-text/90">{label}</p>}
-      <motion.div animate={controls} className="mb-3 flex gap-4">
+      {label && <p className="mb-5 text-[16px] font-medium">{label}</p>}
+      <motion.div animate={controls} className="mb-3 flex gap-3" role="status" aria-label={`${pin.length} of 4 digits entered`}>
         {[0, 1, 2, 3].map((i) => (
           <motion.span
             key={i}
             animate={{ scale: pin.length === i + 1 ? [1, 1.35, 1] : 1 }}
             transition={{ duration: 0.18 }}
-            className={`h-3.5 w-3.5 rounded-full border-2 transition-colors ${
-              i < pin.length ? (error ? "border-danger bg-danger" : "border-accent bg-accent") : "border-white/30"
+            className={`h-4 w-4 rounded-full border-2 transition-colors ${
+              i < pin.length ? (error ? "border-danger bg-danger" : "border-text bg-text") : "border-line-strong"
             }`}
           />
         ))}
       </motion.div>
-      <p className={`mb-6 h-5 text-center text-sm ${error ? "text-danger" : "text-transparent"}`}>{error ?? "."}</p>
+      <p aria-live="assertive" className={`mb-6 min-h-5 max-w-[280px] text-center text-[15px] ${error ? "text-danger" : "text-transparent"}`}>{error ?? "."}</p>
       <div className="grid grid-cols-3 gap-x-6 gap-y-3.5">
         {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
           <Key key={d} onPress={() => press(d)} disabled={busy}>
@@ -111,10 +111,8 @@ function Key({
       whileTap={{ scale: 0.88 }}
       onClick={onPress}
       disabled={disabled}
-      className={`grid h-[68px] w-[68px] place-items-center rounded-full font-display text-[28px] font-medium transition-colors disabled:opacity-40 ${
-        ghost
-          ? "text-text/80 hover:bg-surface-2 active:bg-surface-3"
-          : "border border-line bg-surface-2 text-text shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] hover:bg-surface-3 active:bg-surface-3"
+      className={`num grid h-[70px] w-[70px] place-items-center rounded-full font-display text-[32px] font-semibold transition-colors disabled:opacity-40 ${
+        ghost ? "text-muted hover:bg-surface-2 active:bg-surface-3" : "bg-surface text-text hover:bg-surface-2 active:bg-surface-3"
       }`}
       {...rest}
     >

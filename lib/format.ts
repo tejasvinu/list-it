@@ -61,6 +61,13 @@ export function splitSummary(split: RoadSplit | null) {
   return "Highway + country roads";
 }
 
+/** The road class a ride mostly runs on, which colours its milestone's cap. Unknown splits get the NH yellow. */
+export function mainRoad(split: RoadSplit | null): keyof RoadSplit {
+  if (!split) return "nh";
+  if (!(split.nh + split.sh + split.other)) return "city";
+  return (["sh", "other"] as const).reduce<keyof RoadSplit>((best, k) => (split[k] > split[best] ? k : best), "nh");
+}
+
 export function splitParts(split: RoadSplit) {
   const total = split.city + split.nh + split.sh + split.other || 1;
   return (Object.keys(ROAD_SPLIT_LABELS) as (keyof RoadSplit)[])

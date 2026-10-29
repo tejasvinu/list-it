@@ -39,7 +39,7 @@ export default async function GroupLayout({ children, params }: LayoutProps<"/g/
 
   const unread = await hasUnread(ctx);
   return (
-    <div className="relative z-10 min-h-dvh">
+    <div className="relative min-h-dvh">
       <Toaster />
       <ContentFrame slug={slug}>{children}</ContentFrame>
       <BottomNav slug={slug} me={lite(ctx.viewer)} unread={unread} groupName={ctx.group.name} />

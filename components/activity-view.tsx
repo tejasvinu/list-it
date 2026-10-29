@@ -14,18 +14,18 @@ function describe(a: ActivityItem) {
   const dest = <span className="font-semibold">{a.destName}</span>;
   switch (a.kind) {
     case "joined":
-      return <>joined the crew 👋</>;
+      return <>joined the crew</>;
     case "added":
       return <>added {dest}</>;
     case "planned":
       return (
         <>
           locked in {dest}
-          {a.detail && ` for ${prettyDate(a.detail)}`} 📅
+          {a.detail && ` for ${prettyDate(a.detail)}`}
         </>
       );
     case "done":
-      return <>rode {dest} 🏁</>;
+      return <>rode {dest}</>;
     case "reacted":
       return (
         <>
@@ -33,7 +33,7 @@ function describe(a: ActivityItem) {
         </>
       );
     case "in":
-      return <>is in for {dest} 🏍️</>;
+      return <>is in for {dest}</>;
     case "commented":
       return (
         <>
@@ -45,7 +45,7 @@ function describe(a: ActivityItem) {
       const k = STOP_KINDS[(kind in STOP_KINDS ? kind : "other") as StopKind];
       return (
         <>
-          added a {k.label.toLowerCase()} stop {k.emoji} <span className="font-semibold">{rest.join(":")}</span> for {dest}
+          added a {k.label.toLowerCase()} stop, <span className="font-semibold">{rest.join(":")}</span>, for {dest}
         </>
       );
     }
@@ -93,14 +93,19 @@ export function ActivityView({
 
   return (
     <div>
-      <header className="sticky top-0 z-30 border-b border-line bg-bg/80 px-4 py-3 backdrop-blur-xl">
-        <h1 className="font-display text-2xl font-bold">Activity</h1>
+      <header className="topbar px-4 pb-3 pt-[max(env(safe-area-inset-top),14px)] lg:static lg:bg-transparent lg:px-0 lg:pt-10 lg:shadow-none">
+        <h1 className="display text-[30px] lg:text-[44px]">Activity</h1>
       </header>
-      {items.length === 0 && <p className="px-4 py-16 text-center text-faint">Quiet so far. Go stir something up.</p>}
+      {items.length === 0 && (
+        <div className="px-4 py-16 lg:px-0">
+          <p className="display text-[28px]">Quiet so far</p>
+          <p className="mt-2 text-[16px] text-muted">Add a ride or say you&apos;re in for one, and it shows up here for the crew.</p>
+        </div>
+      )}
       {groups.map((g) => (
-        <section key={g.label} className="pt-4">
-          <h2 className="px-4 pb-1 section-label">{g.label}</h2>
-          <ul>
+        <section key={g.label} className="pt-6">
+          <h2 className="display px-4 pb-2 text-[22px] lg:px-0">{g.label}</h2>
+          <ul className="lg:-mx-3">
             {g.items.map((a, i) => {
               const fresh = a.riderId !== meId && new Date(a.createdAt).getTime() > seen;
               const row = (
@@ -108,26 +113,26 @@ export function ActivityView({
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: Math.min(i, 12) * 0.02 }}
-                  className={`flex items-center gap-3 px-4 py-2.5 ${fresh ? "bg-accent/[0.06]" : ""}`}
+                  className={`flex items-center gap-3 rounded-panel px-4 py-3 transition-colors hover:bg-surface lg:px-3 ${fresh ? "bg-accent-soft hover:bg-accent-soft" : ""}`}
                 >
                   <Avatar rider={a.rider} size={40} />
-                  <p className="min-w-0 flex-1 text-[14px] leading-snug">
+                  <p className="min-w-0 flex-1 text-[16px] leading-snug">
                     <span className="font-semibold">{a.riderId === meId ? "You" : a.rider.name}</span> {describe(a)}{" "}
-                    <span className="text-faint" suppressHydrationWarning>
+                    <span className="num whitespace-nowrap text-[14px] text-faint" suppressHydrationWarning>
                       {timeAgo(a.createdAt)}
                     </span>
                   </p>
                   {a.destinationId && a.destRoute && (
-                    <span className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-line">
+                    <span className="h-12 w-12 shrink-0 overflow-hidden rounded-[4px]">
                       {a.destPhoto ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={a.destPhoto} alt="" className="h-full w-full object-cover" />
                       ) : (
-                        <RouteArt id={`a-${a.id}`} route={a.destRoute} category={a.destCategory ?? "day"} width={44} height={44} labels={false} animate={false} className="h-full w-full" />
+                        <RouteArt id={`a-${a.id}`} route={a.destRoute} category={a.destCategory ?? "day"} width={48} height={48} labels={false} animate={false} className="h-full w-full" />
                       )}
                     </span>
                   )}
-                  {fresh && <span className="h-2 w-2 shrink-0 rounded-full bg-accent" />}
+                  {fresh && <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-text" aria-label="New" />}
                 </motion.div>
               );
               return (

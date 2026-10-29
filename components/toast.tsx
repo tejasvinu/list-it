@@ -21,15 +21,18 @@ export function Toaster() {
     return () => window.removeEventListener(EVENT, on);
   }, []);
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-3 z-[60] mx-auto flex max-w-[480px] flex-col items-center gap-2 px-4">
+    <div
+      aria-live="polite"
+      className="pointer-events-none fixed inset-x-0 top-[max(env(safe-area-inset-top),12px)] z-[60] mx-auto flex max-w-[480px] flex-col items-center gap-2 px-4"
+    >
       <AnimatePresence>
         {items.map((t) => (
           <motion.div
             key={t.id}
-            initial={{ opacity: 0, y: -16, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.95 }}
-            className="rounded-full border border-line-strong bg-surface-2/95 px-4 py-2 text-sm font-medium shadow-xl backdrop-blur"
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="float rounded-full bg-text px-4 py-2.5 text-[15px] font-medium text-inverse"
           >
             {t.message}
           </motion.div>

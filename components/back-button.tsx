@@ -8,7 +8,7 @@ export function BackButton({ fallback }: { fallback: string }) {
   return (
     <button
       onClick={() => (history.length > 1 ? router.back() : router.push(fallback))}
-      className="grid h-10 w-10 place-items-center rounded-full"
+      className="grid h-11 w-11 place-items-center rounded-full hover:bg-surface-2"
       aria-label="Back"
     >
       <ArrowLeft size={20} />

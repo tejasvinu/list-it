@@ -2,7 +2,7 @@
 
 import { startTransition, useOptimistic, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Check, Heart } from "lucide-react";
+import { Check, Heart, Plus } from "lucide-react";
 import { react, toggleIn } from "@/app/g/[slug]/actions";
 import { REACTIONS } from "@/lib/config";
 import type { RiderLite } from "@/lib/types";
@@ -31,8 +31,9 @@ export function ReactionButton({ mine, onPick }: { mine: string | null; onPick: 
       <motion.button
         whileTap={{ scale: 0.8 }}
         onClick={() => setOpen((o) => !o)}
-        className="grid h-10 w-10 place-items-center rounded-full"
-        aria-label="React"
+        className="grid h-11 w-11 place-items-center rounded-full text-muted transition-colors hover:text-text"
+        aria-label={mine ? `Your reaction: ${mine}. Change it` : "React"}
+        aria-expanded={open}
       >
         <AnimatePresence mode="popLayout" initial={false}>
           {mine ? (
@@ -48,7 +49,7 @@ export function ReactionButton({ mine, onPick }: { mine: string | null; onPick: 
             </motion.span>
           ) : (
             <motion.span key="none" initial={{ scale: 0.6 }} animate={{ scale: 1 }} exit={{ scale: 0.6, opacity: 0 }}>
-              <Heart size={24} strokeWidth={1.9} />
+              <Heart size={22} strokeWidth={1.9} />
             </motion.span>
           )}
         </AnimatePresence>
@@ -62,7 +63,7 @@ export function ReactionButton({ mine, onPick }: { mine: string | null; onPick: 
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 6, scale: 0.9 }}
               transition={{ type: "spring", stiffness: 520, damping: 30 }}
-              className="absolute bottom-12 left-0 z-40 flex origin-bottom-left gap-1 rounded-full border border-line-strong bg-surface-2 p-1.5 shadow-2xl"
+              className="float absolute bottom-12 left-0 z-40 flex origin-bottom-left gap-0.5 rounded-full bg-surface p-1.5"
             >
               {REACTIONS.map((e, i) => (
                 <motion.button
@@ -76,7 +77,8 @@ export function ReactionButton({ mine, onPick }: { mine: string | null; onPick: 
                     onPick(mine === e ? null : e);
                     setOpen(false);
                   }}
-                  className={`grid h-10 w-10 place-items-center rounded-full text-[24px] ${mine === e ? "bg-surface-3" : ""}`}
+                  aria-label={`React ${e}`}
+                  className={`grid h-11 w-11 place-items-center rounded-full text-[24px] ${mine === e ? "bg-accent-soft" : ""}`}
                 >
                   {e}
                 </motion.button>
@@ -98,7 +100,7 @@ export function ReactionSummary({ list, meId }: { list: ReactionState["list"]; m
   const first = names.includes("You") ? "You" : names[0];
   const rest = list.length - 1;
   return (
-    <p className="flex items-center gap-1.5 text-[13px] text-muted">
+    <p className="flex items-center gap-1.5 text-[14px] text-muted">
       <span className="flex -space-x-0.5">
         {top.map(([e]) => (
           <span key={e} className="text-[15px]">
@@ -143,20 +145,17 @@ export function InButton({
   };
   return (
     <motion.button
-      whileTap={{ scale: 0.93 }}
+      whileTap={{ scale: 0.95 }}
       onClick={toggle}
-      className={`flex items-center gap-2 rounded-full py-1.5 pl-1.5 text-sm font-semibold transition-colors ${
-        compact ? "pr-3" : "pr-4"
-      } ${
-        state.imIn
-          ? "btn-primary text-black"
-          : "border border-line-strong bg-surface text-text"
-      }`}
+      aria-pressed={state.imIn}
+      className={`btn gap-2 pl-1.5 ${compact ? "pr-4" : "pr-5"} ${state.imIn ? "btn-accent" : "btn-ink"}`}
     >
       {state.interested.length > 0 ? (
-        <AvatarStack riders={state.interested} max={3} size={22} />
+        <AvatarStack riders={state.interested} max={3} size={30} />
       ) : (
-        <span className="grid h-[22px] w-[22px] place-items-center rounded-full bg-surface-3 text-xs">🏍️</span>
+        <span className="grid h-[30px] w-[30px] place-items-center rounded-full bg-inverse/15">
+          <Plus size={16} strokeWidth={2.4} />
+        </span>
       )}
       <AnimatePresence mode="popLayout" initial={false}>
         <motion.span
@@ -164,11 +163,11 @@ export function InButton({
           initial={{ y: 10, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -10, opacity: 0 }}
-          className="flex items-center gap-1"
+          className="flex items-center gap-1.5"
         >
-          {state.imIn && <Check size={14} strokeWidth={3} />}
+          {state.imIn && <Check size={16} strokeWidth={2.8} />}
           {state.imIn ? "I'm in" : "Count me in"}
-          {state.interested.length > 0 && <span className="opacity-60">· {state.interested.length}</span>}
+          {state.interested.length > 0 && <span className="num opacity-70">{state.interested.length}</span>}
         </motion.span>
       </AnimatePresence>
     </motion.button>
