@@ -19,6 +19,10 @@ export default async function AdminGroupPage({ params }: PageProps<"/admin/g/[id
   const roster = (await c.riders.find({ groupId: id, removedAt: null }).sort({ createdAt: 1 }).toArray()).map((r) =>
     fromDoc<Rider>(r),
   );
+  const [photoUsage] = await c.uploads.aggregate<{ count: number; bytes: number }>([
+    { $match: { groupId: id } },
+    { $group: { _id: null, count: { $sum: 1 }, bytes: { $sum: { $add: [{ $binarySize: "$bytes" }, { $binarySize: "$thumb" }] } } } },
+  ]).toArray();
   const url = `${await siteOrigin()}/g/${group.slug}`;
   const open = registrationOpen(group);
   const input = "field !py-2.5";
@@ -35,6 +39,11 @@ export default async function AdminGroupPage({ params }: PageProps<"/admin/g/[id
           <button className={quiet}>Rename</button>
         </form>
       </div>
+
+      <section className="space-y-2">
+        <h2 className="display text-[24px]">Rider photos</h2>
+        <p className="text-[15px] text-muted">{photoUsage?.count ?? 0} of 400 photos · {((photoUsage?.bytes ?? 0) / 1024 / 1024).toFixed(2)} MB used</p>
+      </section>
 
       <section className="space-y-2">
         <h2 className="display text-[24px]">Share link</h2>

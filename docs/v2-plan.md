@@ -104,6 +104,9 @@ Written 29 October 2026. This is the brief for v2: every README roadmap item tha
 - Notifications are kept per recipient and exclude removed riders and the actor. Commenters on the same ride or loop receive thread updates; one event is sent once per recipient. A weekly digest includes plans made or changed in the past seven days, and stops at complete entries under 1,500 characters.
 - Calendar events are all-day, with an exclusive end date; a loop spans its computed number of riding days. WhatsApp sharing is the fallback for ride and loop shares, while existing feed shares retain their clipboard fallback.
 
+- Rider photos belong to a rider and destination, so the rider's photos also appear on their ride-log entry without a second copy. Removing a log entry does not delete photos; deleting the ride removes them. Unique slot indexes enforce both limits even during concurrent uploads.
+- The browser starts at WebP quality 0.8 and lowers quality toward the 350 KB target, falling back to JPEG when WebP is unavailable. The server fully decodes both images, verifies formats and dimensions, and caps thumbnails at 150 KB. Admin storage includes both images. Private immutable browser caches can retain an already viewed image after deletion or sign-out.
+
 ## Progress
 
 ### Phase 1 — implementation in progress
@@ -124,3 +127,8 @@ Written 29 October 2026. This is the brief for v2: every README roadmap item tha
 - Added on-demand Overpass stop suggestions, a seven-day route-aware cache, grouped add/Maps controls and route markers. Added recipient notifications for ride and loop activity, the For you/Crew views, visible-tab polling and a WhatsApp weekly digest. Added signed-in all-day calendar downloads and ride/loop sharing.
 - Fixed an earlier date-validation gap that accepted impossible planned dates, and record planned date changes as activity so interested riders can be notified. Added tests for stop sampling/ranking, calendar escaping, line folding and dates.
 - `npm run typecheck`, `npm run lint`, and `npm run build` passed. `npm test` failed before running tests because Windows `os.userInfo()` returned `uv_os_get_passwd` ENOMEM; the direct `tsx` command with a temporary-directory preload passed all tests. Browser checks at 390 and 1440 px were skipped as directed; the orchestrator will run them. External Overpass and WhatsApp interactions were not exercised in a browser.
+
+### Phase 4 - rider photos
+
+- Added browser resizing, MongoDB storage with concurrency-safe limits, authenticated serving, swipe/keyboard gallery, ride-log photos, deletion permissions and admin storage usage. Deleting a ride removes its uploads.
+- Checked server-render paths and authorization in code, and added tests for image validation and quota slots. `npm run typecheck`, `npm run lint` and `npm run build` passed. `npm test` hit the Windows `os.userInfo()` ENOMEM error before tests started; the direct `tsx` command with a temporary-directory preload passed all 34 tests. Browser checks were skipped as directed; the orchestrator will run them. No live database upload was exercised.

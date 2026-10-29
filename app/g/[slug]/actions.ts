@@ -249,7 +249,9 @@ export async function setStatus(slug: string, id: string, status: string, date: 
 export async function deleteDestination(slug: string, id: string): Promise<Result> {
   const ctx = await requireRider(slug);
   await ownDestination(ctx, id);
-  await (await cols()).destinations.updateOne({ _id: id }, { $set: { deletedAt: new Date() } });
+  const c = await cols();
+  await c.destinations.updateOne({ _id: id }, { $set: { deletedAt: new Date() } });
+  await c.uploads.deleteMany({ groupId: ctx.group.id, destinationId: id });
   refresh(slug);
   return { ok: true };
 }

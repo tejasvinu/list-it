@@ -42,6 +42,7 @@ import { Sheet } from "./sheet";
 import { InButton, ReactionButton, ReactionSummary, useReactions } from "./social";
 import { AddToLoop } from "./add-to-loop";
 import { RideLog } from "./ride-log";
+import { RiderPhotos } from "./rider-photos";
 import { WeatherBlock } from "./weather-block";
 import type { WeatherDay } from "@/lib/weather-types";
 import { attempt, shareLink, toast } from "./toast";
@@ -206,25 +207,10 @@ export function DestinationView({ d, slug, me, riders, weather, loops }: { d: De
 
         <RideLog d={d} slug={slug} me={me} riders={riders} />
 
-        {d.photos.length > 0 && (
-          <section className="mt-10">
-            <SectionTitle>Around here</SectionTitle>
-            <div className="no-scrollbar -mx-4 flex snap-x scroll-px-4 gap-2 overflow-x-auto px-4 lg:-mx-10 lg:scroll-px-10 lg:px-10">
-              {d.photos.map((p) => (
-                <a key={p.thumb} href={p.page} target="_blank" rel="noreferrer" className="group w-[260px] shrink-0 snap-start">
-                  <span className="block h-[180px] overflow-hidden rounded-panel bg-surface-2">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.thumb} alt={p.title} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
-                  </span>
-                  <span className="mt-1.5 block truncate text-[12px] text-faint">
-                    Photo: {p.credit ?? "Wikimedia Commons"}
-                    {p.license && `, ${p.license}`}
-                  </span>
-                </a>
-              ))}
-            </div>
-          </section>
-        )}
+        <section className="mt-10">
+          <SectionTitle>Photos</SectionTitle>
+          <RiderPhotos photos={d.uploads} commons={d.photos} slug={slug} destinationId={d.id} ownerId={d.owner.id} meId={me.id} allowUpload />
+        </section>
 
         <Stops d={d} slug={slug} me={me} suggestions={suggestions} setSuggestions={setSuggestions} />
         <Comments d={d} slug={slug} me={me} />

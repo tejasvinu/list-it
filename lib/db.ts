@@ -1,5 +1,5 @@
 import "server-only";
-import { MongoClient, type Collection, type Db } from "mongodb";
+import { MongoClient, type Binary, type Collection, type Db } from "mongodb";
 import { attachDatabasePool } from "@vercel/functions";
 import type { Photo, RoadSplit, StartPoint, Loop } from "./types";
 export type { Loop } from "./types";
@@ -123,6 +123,12 @@ export type Notification = {
 export type SuggestedStop = { id: string; kind: string; name: string; lat: number; lng: number; km: number };
 export type StopSuggestions = { destinationId: string; routeKey: string; stops: SuggestedStop[]; updatedAt: Date };
 
+export type Upload = {
+  id: string; groupId: string; destinationId: string; riderId: string;
+  mime: string; width: number; height: number; bytes: Binary; thumb: Binary;
+  groupSlot: number; riderSlot: number; createdAt: Date;
+};
+
 export type OriginRoute = { destinationId: string; lat: number; lng: number; distanceKm: number; durationMin: number; approx: boolean; destinationLat: number; destinationLng: number; updatedAt: Date };
 export type WeatherCache = { lat: number; lng: number; days: import("./weather-types").WeatherDay[]; updatedAt: Date };
 
@@ -174,6 +180,9 @@ async function connect() {
 
 async function ensureIndexes(db: Db) {
   await Promise.all([
+    db.collection("uploads").createIndex({ groupId: 1, groupSlot: 1 }, { unique: true }),
+    db.collection("uploads").createIndex({ groupId: 1, destinationId: 1, riderId: 1, riderSlot: 1 }, { unique: true }),
+    db.collection("uploads").createIndex({ groupId: 1, destinationId: 1, createdAt: 1 }),
     db.collection("notifications").createIndex({ groupId: 1, riderId: 1, readAt: 1, createdAt: -1 }),
     db.collection("stopSuggestions").createIndex({ destinationId: 1 }, { unique: true }),
     db.collection("loops").createIndex({ groupId: 1, createdAt: -1 }),
@@ -223,6 +232,7 @@ export function getDb() {
 export async function cols() {
   const db = await getDb();
   return {
+    uploads: db.collection<Stored<Upload>>("uploads"),
     notifications: db.collection<Stored<Notification>>("notifications"),
     stopSuggestions: db.collection<StopSuggestions>("stopSuggestions"),
     loops: db.collection<Stored<Loop>>("loops"),

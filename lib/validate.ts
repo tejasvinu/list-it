@@ -186,3 +186,19 @@ export function validateLoop(raw: unknown) {
   }
   return { name, notes: cleanMultiline(v.notes, 2000) || null, stops: stops as import("./types").LoopStop[], startDate };
 }
+export const PHOTO_MAX_BYTES = 600 * 1024;
+export const PHOTO_THUMB_MAX_BYTES = 150 * 1024;
+export const PHOTO_CREW_LIMIT = 400;
+export const PHOTO_RIDER_LIMIT = 6;
+
+export function validPhotoDimensions(width: number, height: number, max: number) {
+  return Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0 && Math.max(width, height) <= max;
+}
+
+export function freePhotoSlot(used: Iterable<number>, limit: number) {
+  const slots = new Set(used);
+  for (let slot = 0; slot < limit; slot++) {
+    if (!slots.has(slot)) return slot;
+  }
+  return undefined;
+}

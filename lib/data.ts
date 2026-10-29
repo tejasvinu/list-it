@@ -142,12 +142,21 @@ export async function getDestination(ctx: GroupContext, id: string) {
   const [item] = await hydrate([fromDoc<Destination>(row)], ctx.riders, ctx.viewer?.id ?? null);
   const byId = new Map(ctx.riders.map((r) => [r.id, r]));
 
-  const [thread, stopRows] = await Promise.all([
+  const [thread, stopRows, uploadRows] = await Promise.all([
     c.comments.find({ destinationId: id, deletedAt: null }).sort({ createdAt: 1 }).toArray(),
     c.stops.find({ destinationId: id }).sort({ createdAt: 1 }).toArray(),
+    c.uploads.find({ groupId: ctx.group.id, destinationId: id }, {
+      projection: { riderId: 1, createdAt: 1 },
+    }).sort({ createdAt: -1 }).toArray(),
   ]);
   return {
     ...item,
+    uploads: uploadRows.map((photo) => ({
+      id: photo._id,
+      riderId: photo.riderId,
+      rider: byId.get(photo.riderId) ?? ghost,
+      createdAt: photo.createdAt,
+    })),
     comments: thread.map((x) => {
       const cm = fromDoc<Comment>(x);
       return { ...cm, rider: byId.get(cm.riderId) ?? ghost };
