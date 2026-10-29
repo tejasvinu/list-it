@@ -5,9 +5,14 @@ import { cols, fromDoc, toDoc, type Activity, type Comment, type Destination, ty
 import { getGroupBySlug, getViewer, registrationOpen } from "./auth";
 import { rid } from "./ids";
 import type { RiderLite } from "./types";
+import { forecast } from "./weather";
+import { daysUntil } from "./format";
+import { originKey } from "./origin-routes";
+import { HOME } from "./config";
+import type { WeatherDay } from "./weather-types";
 export type { RiderLite };
 
-export const lite = (r: Rider): RiderLite => ({ id: r.id, name: r.name, emoji: r.emoji, color: r.color });
+export const lite = (r: Rider): RiderLite => ({ id: r.id, name: r.name, emoji: r.emoji, color: r.color, start: r.start ?? null });
 
 const ghost: RiderLite = { id: "", name: "Former rider", emoji: "👻", color: "#52525b" };
 
@@ -42,7 +47,9 @@ export type FeedItem = Destination & {
   interested: RiderLite[];
   imIn: boolean;
   /** Riders who have ridden it, most recent first */
-  riddenBy: { rider: RiderLite; date: string | null }[];
+  riddenBy: { rider: RiderLite; date: string | null; note: string | null; loggedBy: string | null }[];
+  fromYou: { name: string; distanceKm: number; durationMin: number; approx: boolean } | null;
+  forecastDay: WeatherDay | null;
   iRode: boolean;
   /** The rider who added it has been removed, so anyone in the crew can look after it */
   ownerGone: boolean;
@@ -57,7 +64,8 @@ async function hydrate(rows: Destination[], groupRiders: RiderLite[], viewerId: 
   const who = (id: string) => byId.get(id) ?? ghost;
   const c = await cols();
 
-  const [rx, ins, rd, cc, sc] = await Promise.all([
+  const start = groupRiders.find(r => r.id === viewerId)?.start;
+  const [rx, ins, rd, cc, sc, origins, weather] = await Promise.all([
     c.reactions.find({ destinationId: { $in: ids } }, { projection: { _id: 0 } }).sort({ createdAt: 1 }).toArray(),
     c.interests.find({ destinationId: { $in: ids } }, { projection: { _id: 0 } }).sort({ createdAt: 1 }).toArray(),
     c.rides.find({ destinationId: { $in: ids } }, { projection: { _id: 0 } }).sort({ date: -1, createdAt: -1 }).toArray(),
@@ -73,6 +81,8 @@ async function hydrate(rows: Destination[], groupRiders: RiderLite[], viewerId: 
         { $group: { _id: "$destinationId", n: { $sum: 1 } } },
       ])
       .toArray(),
+    start ? c.originRoutes.find({ destinationId: { $in: ids }, ...originKey(start) }).toArray() : Promise.resolve([]),
+    c.weather.find({ $or: rows.map(d => ({ lat: Number(d.lat.toFixed(2)), lng: Number(d.lng.toFixed(2)) })) }).toArray(),
   ]);
   const commentCounts = new Map(cc.map((x) => [x._id, x.n]));
   const stopCounts = new Map(sc.map((x) => [x._id, x.n]));
@@ -89,7 +99,9 @@ async function hydrate(rows: Destination[], groupRiders: RiderLite[], viewerId: 
       myReaction: myRx.find((r) => r.riderId === viewerId)?.emoji ?? null,
       interested: myIns.map((i) => who(i.riderId)),
       imIn: myIns.some((i) => i.riderId === viewerId),
-      riddenBy: myRides.map((r) => ({ rider: who(r.riderId), date: r.date })),
+      riddenBy: myRides.map((r) => ({ rider: who(r.riderId), date: r.date, note: r.note ?? null, loggedBy: r.loggedBy ?? null })),
+      fromYou: (() => { const route = origins.find(o => o.destinationId === d.id && o.destinationLat === d.lat && o.destinationLng === d.lng); return start && route && (start.lat !== HOME.lat || start.lng !== HOME.lng) ? { name: start.name, distanceKm: route.distanceKm, durationMin: route.durationMin, approx: route.approx } : null; })(),
+      forecastDay: (() => { const w = weather.find(w => w.lat === Number(d.lat.toFixed(2)) && w.lng === Number(d.lng.toFixed(2)) && Date.now() - w.updatedAt.getTime() < 3600000); return d.status === "planned" && d.statusDate ? w?.days.find(day => day.date === d.statusDate) ?? null : null; })(),
       iRode: myRides.some((r) => r.riderId === viewerId),
       commentCount: commentCounts.get(d.id) ?? 0,
       stopCount: stopCounts.get(d.id) ?? 0,
@@ -102,6 +114,7 @@ export async function getFeed(ctx: GroupContext) {
     .find({ groupId: ctx.group.id, deletedAt: null })
     .sort({ createdAt: -1 })
     .toArray();
+  await Promise.all(rows.filter(d => d.status === "planned" && d.statusDate && daysUntil(d.statusDate) >= 0 && daysUntil(d.statusDate) < 16).map(d => forecast(d)));
   return hydrate(rows.map((r) => fromDoc<Destination>(r)), ctx.riders, ctx.viewer?.id ?? null);
 }
 

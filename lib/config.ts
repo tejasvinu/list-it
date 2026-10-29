@@ -3,6 +3,27 @@
 /** Every ride starts and ends here (Bengaluru city centre). */
 export const HOME = { name: "Bengaluru", short: "BLR", lat: 12.9716, lng: 77.5946 };
 
+export const START_AREAS = [
+  { name: "Whitefield", lat: 12.9698, lng: 77.75 },
+  { name: "Yelahanka", lat: 13.1007, lng: 77.5963 },
+  { name: "Hebbal", lat: 13.0358, lng: 77.597 },
+  { name: "Electronic City", lat: 12.8456, lng: 77.6603 },
+  { name: "Koramangala", lat: 12.9352, lng: 77.6245 },
+  { name: "Indiranagar", lat: 12.9784, lng: 77.6408 },
+  { name: "JP Nagar", lat: 12.9063, lng: 77.5857 },
+  { name: "Banashankari", lat: 12.9255, lng: 77.5468 },
+  { name: "Rajajinagar", lat: 12.9916, lng: 77.551 },
+  { name: "Marathahalli", lat: 12.9591, lng: 77.6974 },
+  { name: "Sarjapur Road", lat: 12.9141, lng: 77.6774 },
+  { name: "Kengeri", lat: 12.9142, lng: 77.4825 },
+  { name: "Hennur", lat: 13.0356, lng: 77.642 },
+  { name: "Bellandur", lat: 12.9304, lng: 77.6784 },
+  { name: "HSR Layout", lat: 12.9116, lng: 77.6474 },
+  { name: "Jayanagar", lat: 12.925, lng: 77.5938 },
+  { name: "Malleshwaram", lat: 13.0031, lng: 77.5643 },
+  { name: "Devanahalli", lat: 13.247, lng: 77.713 },
+] as const;
+
 export const REGISTRATION_DAYS = 3;
 
 export const CATEGORIES = {

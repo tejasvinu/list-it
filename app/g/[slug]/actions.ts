@@ -22,8 +22,9 @@ import {
 } from "@/lib/geo";
 import { AVATAR_COLORS, AVATAR_EMOJIS, REACTIONS, STATUS_KEYS, STOP_KIND_KEYS } from "@/lib/config";
 import { routeSealOk, sealRoute } from "@/lib/seal";
-import { clean, cleanMultiline, inRange, validateDestination, type DestinationInput } from "@/lib/validate";
-import type { Photo } from "@/lib/types";
+import { clean, cleanMultiline, inRange, validateDestination, validRideDate, validStart, type DestinationInput } from "@/lib/validate";
+import type { Photo, StartPoint } from "@/lib/types";
+import { originRoute } from "@/lib/origin-routes";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -224,7 +225,7 @@ export async function updateDestination(slug: string, id: string, input: Destina
   if (data.status !== before.status && data.status === "planned") {
     await logActivity(ctx.log, "planned", id, data.statusDate);
   }
-  await setRidden(ctx, id, riddenOn);
+  if (riddenOn) await setRidden(ctx, id, riddenOn);
   refresh(slug);
   return { ok: true };
 }
@@ -313,7 +314,7 @@ export async function toggleIn(slug: string, id: string): Promise<Result<{ in: b
 export async function markRidden(slug: string, id: string, date: string | null): Promise<Result> {
   const ctx = await requireRider(slug);
   await visibleDestination(ctx, id);
-  if (date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("Pick a date.");
+  if (date !== null && !validRideDate(date)) return fail("Pick a date.");
   await setRidden(ctx, id, date);
   refresh(slug);
   return { ok: true };
@@ -442,4 +443,53 @@ export async function markActivitySeen(slug: string) {
   if (!ctx.viewer) return;
   await (await cols()).riders.updateOne({ _id: ctx.viewer.id }, { $set: { activitySeenAt: new Date() } });
   refresh(slug);
+}
+
+export async function saveStart(slug: string, input: StartPoint | null): Promise<Result> {
+  const ctx = await requireRider(slug);
+  const start = input === null ? null : validStart(input);
+  if (input !== null && !start) return fail("Pick a valid start point.");
+  await (await cols()).riders.updateOne({ _id: ctx.viewer.id, groupId: ctx.group.id }, { $set: { start } });
+  refresh(slug);
+  return { ok: true };
+}
+
+export async function fillOriginRoutes(slug: string, ids: string[]): Promise<Result<{ count: number }>> {
+  const ctx = await requireRider(slug);
+  if (!ctx.viewer.start) return fail("Set your start point first.");
+  if (!Array.isArray(ids) || ids.length > 3 || ids.some(id => typeof id !== "string" || id.length > 100)) return fail("Invalid rides.");
+  const rows = await (await cols()).destinations.find({ _id: { $in: ids }, groupId: ctx.group.id, deletedAt: null }).toArray();
+  await Promise.all(rows.map(d => originRoute({ id: d._id, lat: d.lat, lng: d.lng }, ctx.viewer.start!)));
+  refresh(slug);
+  return { ok: true, count: rows.length };
+}
+
+export async function logRide(slug: string, id: string, input: { date: string; riderIds: string[]; note: string }): Promise<Result> {
+  const ctx = await requireRider(slug);
+  await visibleDestination(ctx, id);
+  if (!input || !validRideDate(input.date)) return fail("Pick a valid date that isn't in the future.");
+  if (!Array.isArray(input.riderIds) || !input.riderIds.length || input.riderIds.length > ctx.riders.length || input.riderIds.some(r => typeof r !== "string" || !ctx.riders.some(member => member.id === r))) return fail("Pick riders from this crew.");
+  if (typeof input.note !== "string" || input.note.length > 500) return fail("Keep your note to 500 characters.");
+  const ids = [...new Set(input.riderIds)];
+  const c = await cols();
+  await Promise.all(ids.map(riderId => c.rides.updateOne({ destinationId: id, riderId }, {
+    $set: { date: input.date, ...(riderId === ctx.viewer.id ? { note: cleanMultiline(input.note, 500) } : {}) },
+    $setOnInsert: { createdAt: new Date(), ...(riderId !== ctx.viewer.id ? { loggedBy: ctx.viewer.id } : {}) },
+  }, { upsert: true })));
+  await c.destinations.updateOne({ _id: id, groupId: ctx.group.id, status: "planned", statusDate: input.date }, { $set: { status: "wishlist", statusDate: null, updatedAt: new Date() } });
+  await logActivity(ctx.log, "rode", id, `${input.date} · ${ids.length} rider${ids.length === 1 ? "" : "s"}`);
+  refresh(slug);
+  return { ok: true };
+}
+
+export async function removeRideLog(slug: string, id: string, riderId: string): Promise<Result> {
+  const ctx = await requireRider(slug);
+  await visibleDestination(ctx, id);
+  if (typeof riderId !== "string" || !ctx.riders.some(r => r.id === riderId)) return fail("Rider not found.");
+  const c = await cols();
+  const entry = await c.rides.findOne({ destinationId: id, riderId });
+  if (!entry || (riderId !== ctx.viewer.id && entry.loggedBy !== ctx.viewer.id)) return fail("You can't remove this ride.");
+  await c.rides.deleteOne({ destinationId: id, riderId });
+  refresh(slug);
+  return { ok: true };
 }

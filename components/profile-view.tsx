@@ -16,6 +16,7 @@ import { Milestone } from "./milestone";
 import { PinPad } from "./pin-pad";
 import { RouteArt } from "./route-art";
 import { Sheet } from "./sheet";
+import { StartPointControl } from "./start-point-control";
 import { attempt, toast } from "./toast";
 
 const TABS = [
@@ -33,6 +34,8 @@ export function ProfileView({
   added,
   imIn,
   ridden,
+  historyKm,
+  rideIds,
 }: {
   slug: string;
   rider: RiderLite;
@@ -41,13 +44,15 @@ export function ProfileView({
   added: FeedItem[];
   imIn: FeedItem[];
   ridden: FeedItem[];
+  historyKm: Record<string, number>;
+  rideIds: string[];
 }) {
   const [tab, setTab] = useState<Tab>("added");
   const [styleOpen, setStyleOpen] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
   const router = useRouter();
   const list = tab === "added" ? added : tab === "in" ? imIn : ridden;
-  const riddenKm = ridden.reduce((s, d) => s + d.distanceKm, 0);
+  const riddenKm = ridden.reduce((s, d) => s + historyKm[d.id], 0);
   const counts = { added: added.length, in: imIn.length, ridden: ridden.length };
 
   return (
@@ -82,6 +87,7 @@ export function ProfileView({
 
         {isMe && (
           <div className="mt-6 flex flex-wrap gap-2">
+            <StartPointControl slug={slug} start={rider.start ?? null} rideIds={rideIds} />
             <button onClick={() => setStyleOpen(true)} className="btn btn-quiet !min-h-10 !px-4 text-[14px]">
               <Pencil size={15} /> Edit profile
             </button>
@@ -102,6 +108,7 @@ export function ProfileView({
         )}
       </section>
 
+      {ridden.length > 0 && <p className="mt-5 px-4 text-[15px] text-muted lg:px-0">Farthest: {([...ridden].sort((a, b) => historyKm[b.id] - historyKm[a.id])[0]).name} · {Math.max(...ridden.map(d => historyKm[d.id]))} km</p>}
       <div role="tablist" aria-label="Rides" className="topbar mt-8 flex gap-6 px-4 lg:top-0 lg:px-0">
         {TABS.map((t) => (
           <button
@@ -132,6 +139,7 @@ export function ProfileView({
         <ul className="space-y-2 px-4 py-4 lg:px-0">
           {list.map((d, i) => (
             <motion.li key={d.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 10) * 0.03 }}>
+              {tab === "ridden" && (i === 0 || (d.riddenBy.find(r => r.rider.id === rider.id)?.date ?? "").slice(0, 7) !== (list[i - 1].riddenBy.find(r => r.rider.id === rider.id)?.date ?? "").slice(0, 7)) && <h2 className="display px-1 pb-2 pt-4 text-[22px]">{(() => { const date = d.riddenBy.find(r => r.rider.id === rider.id)?.date; return date ? new Date(`${date}T00:00:00Z`).toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "UTC" }) : "Date unknown"; })()}</h2>}
               <Link href={`/g/${slug}/d/${d.id}`} className="flex items-center gap-4 rounded-panel bg-surface p-3 pr-4 transition-colors hover:bg-surface-2">
                 <span className="h-16 w-16 shrink-0 overflow-hidden rounded-[4px]">
                   <RouteArt id={`p-${tab}-${d.id}`} route={d.route} category={d.category} width={64} height={64} labels={false} animate={false} className="h-full w-full" />

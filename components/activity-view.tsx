@@ -24,6 +24,10 @@ function describe(a: ActivityItem) {
           {a.detail && ` for ${prettyDate(a.detail)}`}
         </>
       );
+    case "rode": {
+      const [date, count] = (a.detail ?? "").split(" · ");
+      return <>rode {dest}{date && ` on ${prettyDate(date)}`}{count && ` with ${count}`}</>;
+    }
     case "done":
       return <>rode {dest}</>;
     case "reacted":

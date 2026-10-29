@@ -142,6 +142,18 @@ export function validateDestination(raw: unknown, now: Date | number = Date.now(
     status: status === "done" ? "wishlist" : status,
     statusDate: status === "planned" ? date : null,
     rideReport: status === "done" ? cleanMultiline(input.rideReport, 3000) || null : null,
-    riddenOn: status === "done" ? (date ?? todayYmd(now)) : null,
+    riddenOn: status === "done" ? (validRideDate(date, now) ? date : todayYmd(now)) : null,
   };
+}
+
+export function validRideDate(value: unknown, now: Date | number = Date.now()): value is string {
+  if (typeof value !== "string" || !YMD.test(value) || value > todayYmd(now)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+export function validStart(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  const name = clean(v.name, 80);
+  return name && inRange(v.lat, v.lng) ? { name, lat: v.lat as number, lng: v.lng as number } : null;
 }

@@ -8,7 +8,6 @@ import { AnimatePresence, motion } from "motion/react";
 import {
   ArrowLeft,
   ArrowUp,
-  Check,
   ExternalLink,
   ImagePlus,
   Loader2,
@@ -25,20 +24,22 @@ import {
   deleteComment,
   deleteDestination,
   deleteStop,
-  markRidden,
   refreshPhotos,
   setStatus,
 } from "@/app/g/[slug]/actions";
 import { SEASONS, STATUS_KEYS, STATUSES, STOP_KIND_KEYS, STOP_KINDS, tagLabel, type Season, type StopKind } from "@/lib/config";
-import { categoryOf, duration, googleMapsPlace, googleMapsRoute, km, prettyDate, timeAgo, todayYmd } from "@/lib/format";
+import { categoryOf, duration, googleMapsPlace, googleMapsRoute, km, prettyDate, timeAgo } from "@/lib/format";
 import type { DestinationDetail } from "@/lib/data";
 import type { RiderLite } from "@/lib/types";
-import { Avatar, AvatarStack } from "./avatar";
+import { Avatar } from "./avatar";
 import { StatusChip } from "./feed-card";
 import { Milestone } from "./milestone";
 import { RoadSplitBar } from "./road-split";
 import { Sheet } from "./sheet";
 import { InButton, ReactionButton, ReactionSummary, useReactions } from "./social";
+import { RideLog } from "./ride-log";
+import { WeatherBlock } from "./weather-block";
+import type { WeatherDay } from "@/lib/weather-types";
 import { attempt, shareLink, toast } from "./toast";
 
 const RouteMap = dynamic(() => import("./maps").then((m) => m.RouteMap), {
@@ -46,7 +47,7 @@ const RouteMap = dynamic(() => import("./maps").then((m) => m.RouteMap), {
   loading: () => <div className="skeleton h-full w-full" />,
 });
 
-export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: string; me: RiderLite }) {
+export function DestinationView({ d, slug, me, riders, weather }: { d: DestinationDetail; slug: string; me: RiderLite; riders: RiderLite[]; weather: WeatherDay[] | null }) {
   const router = useRouter();
   // Rides from removed riders can be looked after by anyone, or nobody could ever change them.
   const mine = d.owner.id === me.id || d.ownerGone;
@@ -119,6 +120,7 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
           <Fact label="Ride type" value={cat.short} sub={cat.hint} dot={cat.color} />
         </dl>
 
+        {d.fromYou && <p className="num mt-4 text-[15px] text-muted">From {d.fromYou.name}: {d.fromYou.approx ? "about " : ""}{km(d.fromYou.distanceKm)} round trip, {duration(d.fromYou.durationMin)}</p>}
         <div className="mt-7 flex flex-wrap items-center gap-3">
           <InButton slug={slug} id={d.id} me={me} imIn={d.imIn} interested={d.interested} />
           <a href={googleMapsRoute(d.lat, d.lng)} target="_blank" rel="noreferrer" className="btn btn-line">
@@ -160,7 +162,7 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
           </a>
         </div>
 
-        <Ridden d={d} slug={slug} me={me} />
+        <WeatherBlock d={d} weather={weather} />
 
         {(d.roadSplit || d.tags.length > 0 || d.seasons.length > 0) && (
           <section className="mt-10">
@@ -194,6 +196,8 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
             </p>
           </section>
         )}
+
+        <RideLog d={d} slug={slug} me={me} riders={riders} />
 
         {d.photos.length > 0 && (
           <section className="mt-10">
@@ -297,71 +301,8 @@ function StatusSheet({ open, onClose, d, slug }: { open: boolean; onClose: () =>
       >
         {busy && <Loader2 size={16} className="animate-spin" />} Save status
       </button>
-      <p className="mt-3 text-center text-[14px] text-faint">Been there? Everyone marks that for themselves with &ldquo;I&apos;ve ridden this&rdquo;.</p>
+      <p className="mt-3 text-center text-[14px] text-faint">Been there? Use “Log a ride” to record it.</p>
     </Sheet>
-  );
-}
-
-/** Who has ridden it, and the viewer's own "I've ridden this" toggle. */
-function Ridden({ d, slug, me }: { d: DestinationDetail; slug: string; me: RiderLite }) {
-  const [open, setOpen] = useState(false);
-  const [date, setDate] = useState("");
-  const [busy, start] = useTransition();
-  const mine = d.riddenBy.find((r) => r.rider.id === me.id);
-  const save = (value: string | null) =>
-    start(async () => {
-      const res = await attempt(() => markRidden(slug, d.id, value));
-      if (!res) return;
-      setOpen(false);
-      toast(!res.ok ? res.error : value ? "Ride logged" : "Ride unmarked");
-    });
-
-  return (
-    <section className="mt-6 flex items-center gap-3 rounded-panel bg-surface p-3 pl-4">
-      <div className="min-w-0 flex-1">
-        {d.riddenBy.length ? (
-          <div className="flex items-center gap-2.5">
-            <AvatarStack riders={d.riddenBy.map((r) => r.rider)} max={4} size={28} />
-            <p className="truncate text-[15px] text-muted">
-              <span className="font-semibold text-text">{d.riddenBy.map((r) => (r.rider.id === me.id ? "You" : r.rider.name)).join(", ")}</span> rode this
-            </p>
-          </div>
-        ) : (
-          <p className="text-[15px] text-faint">Nobody&apos;s ridden this yet</p>
-        )}
-      </div>
-      <button
-        disabled={busy}
-        onClick={() => {
-          setDate(mine?.date ?? todayYmd());
-          setOpen(true);
-        }}
-        className={`btn shrink-0 !min-h-10 !px-4 text-[14px] ${mine ? "bg-good-soft text-good" : "btn-line"}`}
-      >
-        {mine ? (
-          <>
-            <Check size={15} strokeWidth={2.6} /> Ridden
-            {mine.date && <span className="num font-medium">, {prettyDate(mine.date, { day: "numeric", month: "short" })}</span>}
-          </>
-        ) : (
-          "I've ridden this"
-        )}
-      </button>
-      <Sheet open={open} onClose={() => setOpen(false)} title={mine ? "Your ride" : "When did you ride it?"}>
-        <label className="field flex items-center justify-between">
-          <span className="text-muted">Ridden on</span>
-          <input type="date" value={date} max={todayYmd()} onChange={(e) => setDate(e.target.value)} className="bg-transparent text-right font-semibold outline-none" />
-        </label>
-        <button disabled={busy || !date} onClick={() => save(date)} className="btn btn-ink mt-5 w-full !min-h-12">
-          {busy && <Loader2 size={16} className="animate-spin" />} {mine ? "Save date" : "Log ride"}
-        </button>
-        {mine && (
-          <button disabled={busy} onClick={() => save(null)} className="mt-2 min-h-11 w-full text-[15px] font-semibold text-danger">
-            I haven&apos;t ridden it
-          </button>
-        )}
-      </Sheet>
-    </section>
   );
 }
 

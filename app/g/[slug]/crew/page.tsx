@@ -51,7 +51,7 @@ export default async function CrewPage({ params }: PageProps<"/g/[slug]/crew">) 
                     {r.id === ctx.viewer!.id && <span className="ml-2 text-[14px] font-normal text-faint">you</span>}
                   </p>
                   <p className="num text-[14px] text-muted">
-                    {added} added, {ridden} ridden
+                    {added} added, {ridden} ridden · {r.start?.name ?? "Bengaluru"}
                   </p>
                 </div>
                 <ChevronRight size={18} className="text-faint" />

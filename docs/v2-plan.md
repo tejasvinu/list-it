@@ -91,8 +91,16 @@ Written 29 October 2026. This is the brief for v2: every README roadmap item tha
 
 ## Decisions made while building
 
-(Codex: add entries here.)
+- Start-area presets are representative neighbourhood coordinates. Custom areas use the existing place search; clearing the selection returns to Bengaluru city centre.
+- An unavailable OSRM route uses twice the straight-line distance and a 50 km/h estimate. Approximate cached routes are retried after an hour; a changed destination pin invalidates its cached route.
+- Seasons are winter (December–February), summer (March–May), monsoon (June–September), and post-monsoon (October–November), in IST. For the northeast monsoon heuristic, the east side is longitude 77° E or farther east and south of 13.5° N.
+- Logging someone already in the ride log updates their date but preserves their note and original logger. A rider's personal note is saved only when that rider is selected.
 
 ## Progress
 
-(Codex: add one section per phase.)
+### Phase 1 — implementation in progress
+
+- Added start-point selection, cached routes and profile batch calculation; ride log entries and rider history; and forecast and season hints. No migration is required for older records.
+- `npm run typecheck` and `npm run build` passed. The 22 unit tests passed when invoked directly with a temporary workaround for Windows Node's failing `os.userInfo()` call; `npm test` itself failed before running tests. Lint passed on `app`, `components` and `lib`; a later full lint run included temporary browser-check files and failed on those generated files.
+- The requested browser checks at 390 and 1440 px remain outstanding. Automated review rejected the scripted session-cookie check and rejected access to an existing Edge window containing unrelated personal tabs. The port 3100 server was stopped.
+- Temporary `.phase1-check/` and `.check-node.cjs` files remain because automatic review rejected their removal. The temporary directory includes a copy of `.env.local` and a junction to the repository's `node_modules`; remove the junction itself before recursively removing the temporary directory. Do not commit either temporary path.

@@ -1,7 +1,7 @@
 import "server-only";
 import { MongoClient, type Collection, type Db } from "mongodb";
 import { attachDatabasePool } from "@vercel/functions";
-import type { Photo, RoadSplit } from "./types";
+import type { Photo, RoadSplit, StartPoint } from "./types";
 
 // ---------- Shapes (as the app sees them; stored with `_id` instead of `id`) ----------
 
@@ -29,6 +29,7 @@ export type Rider = {
   lockedUntil: Date | null;
   /** Lockouts in a row since the last correct PIN; each one lasts longer. Missing on older riders. */
   lockouts?: number;
+  start?: StartPoint | null;
   activitySeenAt: Date | null;
   removedAt: Date | null;
   createdAt: Date;
@@ -96,7 +97,7 @@ export type Reaction = { destinationId: string; riderId: string; emoji: string; 
 /** "I'm in", one per rider per destination */
 export type Interest = { destinationId: string; riderId: string; createdAt: Date };
 /** "I've ridden this", one per rider per destination. `date` is YYYY-MM-DD. */
-export type Ride = { destinationId: string; riderId: string; date: string | null; createdAt: Date };
+export type Ride = { destinationId: string; riderId: string; date: string | null; createdAt: Date; note?: string | null; loggedBy?: string | null };
 
 export type Activity = {
   id: string;
@@ -108,6 +109,9 @@ export type Activity = {
   detail: string | null;
   createdAt: Date;
 };
+
+export type OriginRoute = { destinationId: string; lat: number; lng: number; distanceKm: number; durationMin: number; approx: boolean; destinationLat: number; destinationLng: number; updatedAt: Date };
+export type WeatherCache = { lat: number; lng: number; days: import("./weather-types").WeatherDay[]; updatedAt: Date };
 
 /** Fixed-window counter for rate limits; expires on its own at `resetAt`. */
 export type Throttle = { _id: string; count: number; resetAt: Date };
@@ -162,6 +166,8 @@ async function ensureIndexes(db: Db) {
     db.collection("destinations").createIndex({ groupId: 1, createdAt: -1 }),
     db.collection("reactions").createIndex({ destinationId: 1, riderId: 1 }, { unique: true }),
     db.collection("interests").createIndex({ destinationId: 1, riderId: 1 }, { unique: true }),
+    db.collection("originRoutes").createIndex({ destinationId: 1, lat: 1, lng: 1 }, { unique: true }),
+    db.collection("weather").createIndex({ lat: 1, lng: 1 }, { unique: true }),
     db.collection("rides").createIndex({ destinationId: 1, riderId: 1 }, { unique: true }),
     db.collection("comments").createIndex({ destinationId: 1, createdAt: 1 }),
     db.collection("stops").createIndex({ destinationId: 1, createdAt: 1 }),
@@ -206,6 +212,8 @@ export async function cols() {
     comments: db.collection<Stored<Comment>>("comments"),
     reactions: db.collection<Reaction>("reactions") as Collection<Reaction>,
     interests: db.collection<Interest>("interests") as Collection<Interest>,
+    originRoutes: db.collection<OriginRoute>("originRoutes"),
+    weather: db.collection<WeatherCache>("weather"),
     rides: db.collection<Ride>("rides") as Collection<Ride>,
     activity: db.collection<Stored<Activity>>("activity"),
     throttle: db.collection<Throttle>("throttle"),
