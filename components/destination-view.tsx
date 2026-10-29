@@ -39,7 +39,7 @@ import { Milestone } from "./milestone";
 import { RoadSplitBar } from "./road-split";
 import { Sheet } from "./sheet";
 import { InButton, ReactionButton, ReactionSummary, useReactions } from "./social";
-import { shareLink, toast } from "./toast";
+import { attempt, shareLink, toast } from "./toast";
 
 const RouteMap = dynamic(() => import("./maps").then((m) => m.RouteMap), {
   ssr: false,
@@ -225,9 +225,9 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
             icon={busy ? <Loader2 size={18} className="animate-spin" /> : <ImagePlus size={18} />}
             onClick={() =>
               start(async () => {
-                const res = await refreshPhotos(slug, d.id);
+                const res = await attempt(() => refreshPhotos(slug, d.id));
                 setMenu(false);
-                toast(res.ok ? `Found ${res.count} photo${res.count === 1 ? "" : "s"}` : res.error);
+                if (res) toast(res.ok ? `Found ${res.count} photo${res.count === 1 ? "" : "s"}` : res.error);
               })
             }
           >
@@ -239,7 +239,7 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
             onClick={() => {
               if (!confirm(`Delete ${d.name}? Comments and reactions go with it.`)) return;
               start(async () => {
-                await deleteDestination(slug, d.id);
+                if (!(await attempt(() => deleteDestination(slug, d.id)))?.ok) return;
                 toast("Ride deleted");
                 router.push(`/g/${slug}`);
               });
@@ -286,7 +286,9 @@ function StatusSheet({ open, onClose, d, slug }: { open: boolean; onClose: () =>
         disabled={busy}
         onClick={() =>
           start(async () => {
-            await setStatus(slug, d.id, status, needsDate ? date || null : null);
+            const res = await attempt(() => setStatus(slug, d.id, status, needsDate ? date || null : null));
+            if (!res) return;
+            if (!res.ok) return toast(res.error);
             onClose();
             toast(status === "planned" ? "Date locked in" : "Status saved");
           })
@@ -308,7 +310,8 @@ function Ridden({ d, slug, me }: { d: DestinationDetail; slug: string; me: Rider
   const mine = d.riddenBy.find((r) => r.rider.id === me.id);
   const save = (value: string | null) =>
     start(async () => {
-      const res = await markRidden(slug, d.id, value);
+      const res = await attempt(() => markRidden(slug, d.id, value));
+      if (!res) return;
       setOpen(false);
       toast(!res.ok ? res.error : value ? "Ride logged" : "Ride unmarked");
     });
@@ -374,7 +377,8 @@ function Stops({ d, slug, me }: { d: DestinationDetail; slug: string; me: RiderL
   const submit = () =>
     start(async () => {
       setError(null);
-      const res = await addStop(slug, d.id, { kind, name, link, note });
+      const res = await attempt(() => addStop(slug, d.id, { kind, name, link, note }));
+      if (!res) return;
       if (!res.ok) return setError(res.error);
       setOpen(false);
       setName("");
@@ -426,7 +430,7 @@ function Stops({ d, slug, me }: { d: DestinationDetail; slug: string; me: RiderL
                   )}
                   {canDelete && (
                     <button
-                      onClick={() => confirm("Remove this stop?") && start(async () => void (await deleteStop(slug, s.id)))}
+                      onClick={() => confirm("Remove this stop?") && start(async () => void (await attempt(() => deleteStop(slug, s.id))))}
                       className="grid h-11 w-11 place-items-center rounded-full text-faint hover:bg-surface-2 hover:text-danger"
                       aria-label={`Remove ${s.name}`}
                     >
@@ -487,11 +491,12 @@ function Comments({ d, slug, me }: { d: DestinationDetail; slug: string; me: Rid
     setPending(text);
     setBody("");
     start(async () => {
-      const res = await addComment(slug, d.id, text);
+      const res = await attempt(() => addComment(slug, d.id, text));
       setPending(null);
-      if (!res.ok) {
+      if (!res?.ok) {
+        // Give the words back, so a dropped connection doesn't cost the rider their comment.
         setBody(text);
-        toast(res.error);
+        if (res) toast(res.error);
       } else {
         setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), 50);
       }
@@ -520,7 +525,7 @@ function Comments({ d, slug, me }: { d: DestinationDetail; slug: string; me: Rid
               </div>
               {c.riderId === me.id && (
                 <button
-                  onClick={() => confirm("Delete this comment?") && start(async () => void (await deleteComment(slug, c.id)))}
+                  onClick={() => confirm("Delete this comment?") && start(async () => void (await attempt(() => deleteComment(slug, c.id))))}
                   className="grid h-9 w-9 place-items-center self-start rounded-full text-faint hover:bg-surface-2 hover:text-danger"
                   aria-label="Delete comment"
                 >

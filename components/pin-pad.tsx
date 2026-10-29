@@ -19,11 +19,22 @@ export function PinPad({
 }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
   const controls = useAnimationControls();
 
   const submit = useCallback(
     async (value: string) => {
-      const err = await onComplete(value);
+      // The server can take a few seconds on a phone connection; say so instead of sitting on four dots.
+      const slow = setTimeout(() => setChecking(true), 250);
+      let err: string | null | void;
+      try {
+        err = await onComplete(value);
+      } catch {
+        err = "Couldn't reach list-it. Check your signal and try again.";
+      } finally {
+        clearTimeout(slow);
+        setChecking(false);
+      }
       if (err) {
         setError(err);
         await controls.start({ x: [0, -14, 12, -8, 6, 0], transition: { duration: 0.4 } });
@@ -73,7 +84,9 @@ export function PinPad({
           />
         ))}
       </motion.div>
-      <p aria-live="assertive" className={`mb-6 min-h-5 max-w-[280px] text-center text-[15px] ${error ? "text-danger" : "text-transparent"}`}>{error ?? "."}</p>
+      <p aria-live="assertive" className={`mb-6 min-h-5 max-w-[280px] text-center text-[15px] ${error ? "text-danger" : checking || busy ? "text-muted" : "text-transparent"}`}>
+        {error ?? (checking || busy ? "Checking…" : ".")}
+      </p>
       <div className="grid grid-cols-3 gap-x-6 gap-y-3.5">
         {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
           <Key key={d} onPress={() => press(d)} disabled={busy}>

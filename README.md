@@ -10,7 +10,7 @@ No accounts. Each crew lives at a secret link. Anyone with the link can join wit
 |---|---|
 | Access | `/g/<name>-<random>` is the only way in. Each crew is separate, so you can run different crews with different people. |
 | Identity | Pick a name, avatar and PIN once. The phone stays signed in for a year (signed cookie). New phone: tap your name and enter your PIN. |
-| PIN safety | Hashed with scrypt. 5 wrong tries locks that rider for 10 minutes. A PIN reset signs out every device. |
+| PIN safety | Hashed with scrypt. 5 wrong tries lock that rider for 10 minutes, and each lock in a row lasts longer (1 h, 6 h, then a day) until they get it right or the admin resets the PIN. A PIN reset signs out every device. |
 | Ownership | Only the rider who added a ride can edit it, change its status or delete it. Everyone can react, comment, say "I'm in" and add stops. |
 | Location | Short and long Google Maps links, whole WhatsApp messages containing one, plus codes (`26X6+737 …`), or plain `lat, lng`. Falls back to OpenStreetMap search. If the pin lands wrong, drag it on the preview map. |
 | Distance | Bengaluru (city centre) → destination → Bengaluru, using the public OSRM router. The road mix (city / NH / SH / country roads) comes from the same route. |
@@ -37,7 +37,7 @@ Open `http://localhost:3000/admin`, enter `ADMIN_SECRET`, create a crew and copy
 
 Outside Vercel the app refuses to open a remote database unless its name ends in `-dev`, so a local `next start` can't write to production by accident. Set `ALLOW_REMOTE_DB=1` to override.
 
-Other scripts: `npm run reset` drops the database (it refuses a non-local one unless you pass `-- --force`), and `npx tsx scripts/dev-session.mts <name>` prints a rider's session cookie for testing pages with curl.
+Other scripts: `npm run reset` drops the database (a non-local one needs `-- --force`, and only if its name ends in `-dev`), and `npx tsx scripts/dev-session.mts <name>` prints a rider's session cookie for testing pages with curl.
 
 ## Deploy (Vercel + MongoDB Atlas, both free tiers)
 

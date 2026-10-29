@@ -283,15 +283,16 @@ function nameAndArea(text: string) {
 
 type Found = { name: string | null; area: string | null; lat: number; lng: number; mapsUrl: string | null };
 
-/** Fills in a missing name or area from the coordinates. */
-async function finish(place: Found): Promise<Place> {
+/** Fills in a missing name or area from the coordinates, unless the caller already has a name. */
+async function finish(place: Found, lookup = true): Promise<Place> {
   let { name, area } = place;
-  if (!name || !area) {
+  if (lookup && (!name || !area)) {
     const rev = await reverseArea(place.lat, place.lng);
-    name = name ?? rev?.name ?? "Dropped pin";
+    name = name ?? rev?.name ?? null;
     area = area ?? rev?.area ?? null;
   }
-  return { ...place, name, area };
+  // A plus code comes with its town ("Kotagiri, Tamil Nadu"), which beats "Dropped pin".
+  return { ...place, name: name ?? area?.split(",")[0].trim() ?? "Dropped pin", area };
 }
 
 /** "Q4XQ+2C Kotagiri, Tamil Nadu": a short plus code needs the locality after it to know which grid square. */
@@ -302,19 +303,22 @@ async function fromPlusCode(code: string, locality: string) {
   return olcRecover(code, geo?.lat ?? HOME.lat, geo?.lng ?? HOME.lng);
 }
 
-/** Accepts a Google Maps link (short or long), a WhatsApp message containing one, a plus code, or "lat, lng". */
-export async function resolvePlace(input: string): Promise<Place> {
+/**
+ * Accepts a Google Maps link (short or long), a WhatsApp message containing one, a plus code, or "lat, lng".
+ * Pass `lookupName: false` when the caller has its own name, to skip the reverse-geocoding round trip.
+ */
+export async function resolvePlace(input: string, { lookupName = true } = {}): Promise<Place> {
   const trimmed = String(input ?? "").trim();
   const linkMatch = trimmed.match(/https?:\/\/\S+/);
 
   if (!linkMatch) {
     const m = trimmed.match(COORD);
-    if (m) return finish({ name: null, area: null, lat: Number(m[1]), lng: Number(m[2]), mapsUrl: null });
+    if (m) return finish({ name: null, area: null, lat: Number(m[1]), lng: Number(m[2]), mapsUrl: null }, lookupName);
     const plus = trimmed.match(PLUS_CODE);
     if (plus) {
       const { lat, lng } = await fromPlusCode(plus[1], plus[2]);
       const area = plus[2].replace(/\b\d{6}\b/, "").replace(/[\s,]+$/, "").trim() || null;
-      return finish({ name: null, area, lat, lng, mapsUrl: null });
+      return finish({ name: null, area, lat, lng, mapsUrl: null }, lookupName);
     }
     throw new Error("Paste a Google Maps link, or search by name instead.");
   }
@@ -362,7 +366,7 @@ export async function resolvePlace(input: string): Promise<Place> {
   if (lat === undefined || lng === undefined) {
     throw new Error("Couldn't find a location in that link. Try searching by name instead.");
   }
-  return finish({ name, area, lat, lng, mapsUrl: original });
+  return finish({ name, area, lat, lng, mapsUrl: original }, lookupName);
 }
 
 // ---------- Routing (OSRM) ----------
@@ -439,23 +443,39 @@ export function kmBetween(a: { lat: number; lng: number }, b: { lat: number; lng
 
 const CITY_RADIUS_KM = 22;
 
-type OsrmStep = { distance: number; ref?: string; maneuver: { location: [number, number] } };
+type OsrmStep = { distance: number; ref?: string; geometry?: string; maneuver: { location: [number, number] } };
 
-/** Buckets each routing step by road class, so riders see "mostly NH" vs "country roads". */
+const inCity = (lat: number, lng: number) => haversineKm(HOME, { lat, lng }) < CITY_RADIUS_KM;
+
+/**
+ * How much of a step lies inside the city radius, from its own line. The first highway step out of town
+ * often starts in the city and runs 100 km beyond it, so its start point alone says nothing.
+ */
+function cityShare(step: OsrmStep) {
+  const pts = step.geometry ? decodePolyline(step.geometry) : [];
+  if (pts.length < 2) return inCity(step.maneuver.location[1], step.maneuver.location[0]) ? 1 : 0;
+  let inside = 0;
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = { lat: pts[i - 1][0], lng: pts[i - 1][1] };
+    const b = { lat: pts[i][0], lng: pts[i][1] };
+    const d = haversineKm(a, b);
+    total += d;
+    inside += d * ((Number(inCity(a.lat, a.lng)) + Number(inCity(b.lat, b.lng))) / 2);
+  }
+  return total ? inside / total : 0;
+}
+
+/** Splits each routing step's kilometres by road class, so riders see "mostly NH" vs "country roads". */
 export function roadSplitOf(steps: OsrmStep[]): RoadSplit {
   const split: RoadSplit = { city: 0, nh: 0, sh: 0, other: 0 };
   for (const step of steps) {
-    const [lng, lat] = step.maneuver.location;
     const ref = (step.ref ?? "").split(";")[0].trim().toUpperCase();
-    const key: keyof RoadSplit =
-      haversineKm(HOME, { lat, lng }) < CITY_RADIUS_KM
-        ? "city"
-        : /^(NH|AH|NE)/.test(ref)
-          ? "nh"
-          : /^SH/.test(ref)
-            ? "sh"
-            : "other";
-    split[key] += step.distance / 1000;
+    const road: keyof RoadSplit = /^(NH|AH|NE)/.test(ref) ? "nh" : /^SH/.test(ref) ? "sh" : "other";
+    const km = step.distance / 1000;
+    const share = cityShare(step);
+    split.city += km * share;
+    split[road] += km * (1 - share);
   }
   for (const k of Object.keys(split) as (keyof RoadSplit)[]) split[k] = Math.round(split[k]);
   return split;
@@ -537,13 +557,17 @@ export async function photosNear(place: { name: string; lat: number; lng: number
       `&ggscoord=${place.lat}%7C${place.lng}&ggsradius=10000&ggslimit=40&ggsnamespace=6` +
       "&prop=imageinfo&iiprop=url%7Cmime%7Cextmetadata%7Csize&iiurlwidth=900";
     type Resp = { error?: { code?: string; info?: string }; query?: { pages?: Record<string, CommonsPage> } };
-    const get = async () => {
-      const res = await fetch(url, { headers: { "User-Agent": UA, "Api-User-Agent": UA }, signal: timeout(8000) });
-      if (!res.ok) return { error: { code: `http-${res.status}`, info: (await res.text()).slice(0, 200) } } as Resp;
-      return (await res.json()) as Resp;
+    const get = async (): Promise<Resp> => {
+      try {
+        const res = await fetch(url, { headers: { "User-Agent": UA, "Api-User-Agent": UA }, signal: timeout(8000) });
+        if (!res.ok) return { error: { code: `http-${res.status}`, info: (await res.text()).slice(0, 200) } };
+        return (await res.json()) as Resp;
+      } catch (e) {
+        return { error: { code: "fetch", info: e instanceof Error ? e.message : String(e) } };
+      }
     };
     let json = await get();
-    // Commons search sometimes answers "too busy"; one retry usually clears it.
+    // Commons search sometimes answers "too busy" or just hangs; one retry usually clears it.
     if (json.error) {
       await new Promise((r) => setTimeout(r, 1200));
       json = await get();

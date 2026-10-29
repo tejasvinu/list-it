@@ -49,11 +49,13 @@ export function JoinScreen({
   const [emoji, setEmoji] = useState<string>(AVATAR_EMOJIS[0]);
   const [color, setColor] = useState<string>(AVATAR_COLORS[0]);
   const [pending, start] = useTransition();
+  // After a good PIN the crew's pages still have to load; keep the pad saying so until they do.
+  const [entering, enter] = useTransition();
   const [nameError, setNameError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [now] = useState(() => Date.now());
 
-  const done = () => router.refresh();
+  const done = () => enter(() => router.refresh());
 
   const login = (rider: RiderLite) => async (pin: string) => {
     const res = await signIn(slug, rider.id, pin);
@@ -185,7 +187,7 @@ export function JoinScreen({
             <Avatar rider={step.rider} size={76} />
             <h2 className="display mt-3 text-[32px]">Hey {step.rider.name}</h2>
             <div className="mt-6">
-              <PinPad label="Enter your PIN" onComplete={login(step.rider)} />
+              <PinPad label="Enter your PIN" busy={entering} onComplete={login(step.rider)} />
             </div>
           </motion.section>
         )}
@@ -281,7 +283,7 @@ export function JoinScreen({
             <h2 className="display mt-3 text-[32px]">Once more</h2>
             <p className="mt-1 text-[15px] text-muted">Enter the same PIN to confirm</p>
             <div className="mt-6">
-              <PinPad onComplete={confirm(step.pin)} />
+              <PinPad busy={entering} onComplete={confirm(step.pin)} />
             </div>
           </motion.section>
         )}

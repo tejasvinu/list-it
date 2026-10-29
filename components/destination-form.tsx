@@ -44,7 +44,7 @@ import type { Place } from "@/lib/geo";
 import { RouteArt } from "./route-art";
 import { Milestone } from "./milestone";
 import { RoadSplitBar } from "./road-split";
-import { toast } from "./toast";
+import { attempt, toast } from "./toast";
 
 const PickMap = dynamic(() => import("./maps").then((m) => m.PickMap), {
   ssr: false,
@@ -109,8 +109,9 @@ export function DestinationForm({
   const movePin = async (lat: number, lng: number) => {
     if (!preview) return;
     setMoving(true);
-    const res = await previewFromPlace(slug, { name, area: preview.area, lat, lng, mapsUrl: null });
+    const res = await attempt(() => previewFromPlace(slug, { name, area: preview.area, lat, lng, mapsUrl: null }));
     setMoving(false);
+    if (!res) return;
     if (res.ok) {
       setPreview({ ...res.preview, name });
       toast(`Pin moved: ${km(res.preview.distanceKm)} round trip`);
@@ -145,7 +146,8 @@ export function DestinationForm({
     };
     startSave(async () => {
       if (editId) {
-        const res = await updateDestination(slug, editId, input);
+        const res = await attempt(() => updateDestination(slug, editId, input));
+        if (!res) return;
         if (!res.ok) {
           setError(res.error);
           return toast(res.error);
@@ -153,7 +155,8 @@ export function DestinationForm({
         toast("Changes saved");
         leaveEdit();
       } else {
-        const res = await createDestination(slug, input);
+        const res = await attempt(() => createDestination(slug, input));
+        if (!res) return;
         if (!res.ok) {
           setError(res.error);
           return toast(res.error);
@@ -429,7 +432,7 @@ function Finder({ slug, onFound }: { slug: string; onFound: (p: Preview) => void
     const seq = ++searchSeq.current;
     const t = setTimeout(async () => {
       setSearching(true);
-      const r = await searchPlacesAction(slug, query);
+      const r = (await attempt(() => searchPlacesAction(slug, query))) ?? [];
       if (seq === searchSeq.current) {
         setResults(r);
         setSearching(false);
@@ -442,10 +445,10 @@ function Finder({ slug, onFound }: { slug: string; onFound: (p: Preview) => void
     setError(null);
     setLine(0);
     setLoading(true);
-    const res = await fn();
-    if (!res.ok) {
+    const res = await attempt(fn);
+    if (!res?.ok) {
       setLoading(false);
-      setError(res.error);
+      setError(res ? res.error : "Couldn't reach list-it. Check your signal and try again.");
       return;
     }
     // Let the route draw in for a beat before moving on.

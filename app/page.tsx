@@ -8,56 +8,57 @@ import { RoadSplitBar } from "@/components/road-split";
 import { RouteArt } from "@/components/route-art";
 import { Wordmark } from "@/components/wordmark";
 
-// Sample rides for the page, shaped like a real crew's list. Distances are round trips from the city centre.
+// Sample rides for the page, shaped like a real crew's list. Numbers are what list-it's own router gives
+// (round trips from the city centre), so they match what a crew sees after adding the same place.
 const rides: SampleRide[] = [
   {
     name: "Nandi Hills",
     area: "Chikkaballapur",
     category: "short",
-    distanceKm: 122,
-    durationMin: 190,
+    distanceKm: 123,
+    durationMin: 146,
     hairpins: null,
-    split: { city: 34, nh: 58, sh: 10, other: 20 },
+    split: { city: 48, nh: 30, sh: 20, other: 25 },
     route: [[12.97, 77.59], [13.2, 77.65], [13.37, 77.68], [13.2, 77.65], [12.97, 77.59]],
   },
   {
     name: "Yercaud",
     area: "Salem, Tamil Nadu",
     category: "day",
-    distanceKm: 462,
-    durationMin: 530,
+    distanceKm: 363,
+    durationMin: 369,
     hairpins: 20,
-    split: { city: 30, nh: 330, sh: 70, other: 32 },
+    split: { city: 47, nh: 144, sh: 0, other: 171 },
     route: [[12.97, 77.59], [12.6, 77.9], [11.77, 78.21], [12.6, 77.9], [12.97, 77.59]],
   },
   {
     name: "Chikmagalur",
     area: "Western Ghats, Karnataka",
     category: "day",
-    distanceKm: 486,
-    durationMin: 570,
+    distanceKm: 502,
+    durationMin: 377,
     hairpins: null,
-    split: { city: 30, nh: 180, sh: 230, other: 46 },
+    split: { city: 48, nh: 421, sh: 0, other: 32 },
     route: [[12.97, 77.59], [13.3, 76.5], [13.32, 75.77], [13.3, 76.5], [12.97, 77.59]],
   },
   {
     name: "Coorg",
     area: "Madikeri, Kodagu",
     category: "day",
-    distanceKm: 530,
-    durationMin: 620,
+    distanceKm: 512,
+    durationMin: 407,
     hairpins: null,
-    split: { city: 30, nh: 380, sh: 80, other: 40 },
+    split: { city: 51, nh: 450, sh: 6, other: 5 },
     route: [[12.97, 77.59], [12.3, 76.9], [12.42, 75.74], [12.3, 76.9], [12.97, 77.59]],
   },
   {
     name: "Kodaikanal",
     area: "Palani Hills, Tamil Nadu",
     category: "multi",
-    distanceKm: 930,
-    durationMin: 1060,
+    distanceKm: 815,
+    durationMin: 734,
     hairpins: null,
-    split: { city: 30, nh: 700, sh: 160, other: 40 },
+    split: { city: 47, nh: 442, sh: 127, other: 199 },
     route: [[12.97, 77.59], [11.6, 77.7], [10.23, 77.49], [11.6, 77.7], [12.97, 77.59]],
   },
 ];

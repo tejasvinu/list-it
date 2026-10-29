@@ -16,7 +16,7 @@ import { Milestone } from "./milestone";
 import { PinPad } from "./pin-pad";
 import { RouteArt } from "./route-art";
 import { Sheet } from "./sheet";
-import { toast } from "./toast";
+import { attempt, toast } from "./toast";
 
 const TABS = [
   { key: "added", label: "Added" },
@@ -91,7 +91,7 @@ export function ProfileView({
             <button
               onClick={async () => {
                 if (!confirm("Sign out on this phone? You'll need your PIN to get back in.")) return;
-                await signOut(slug);
+                await attempt(() => signOut(slug));
                 router.refresh();
               }}
               className="btn !min-h-10 !px-4 text-[14px] text-muted hover:text-text"
@@ -231,7 +231,8 @@ function ProfileSheet({ open, onClose, slug, rider }: { open: boolean; onClose: 
         disabled={busy || trimmed.length < 2}
         onClick={() =>
           start(async () => {
-            const res = await updateProfile(slug, { name: trimmed, emoji, color });
+            const res = await attempt(() => updateProfile(slug, { name: trimmed, emoji, color }));
+            if (!res) return;
             if (!res.ok) {
               setError(res.error);
               return;
@@ -250,22 +251,35 @@ function ProfileSheet({ open, onClose, slug, rider }: { open: boolean; onClose: 
 
 function PinSheet({ open, onClose, slug }: { open: boolean; onClose: () => void; slug: string }) {
   const [current, setCurrent] = useState<string | null>(null);
+  // Asked twice, as when joining: a typo here would lock the rider out of every other phone.
+  const [next, setNext] = useState<string | null>(null);
   const close = () => {
     setCurrent(null);
+    setNext(null);
     onClose();
   };
   return (
-    <Sheet open={open} onClose={close} title={current ? "New PIN" : "Current PIN"}>
+    <Sheet open={open} onClose={close} title={current === null ? "Current PIN" : next === null ? "New PIN" : "New PIN again"}>
       <div className="pb-2">
         {current === null ? (
           <PinPad key="current" onComplete={async (pin) => void setCurrent(pin)} />
+        ) : next === null ? (
+          <PinPad key="new" onComplete={async (pin) => void setNext(pin)} />
         ) : (
           <PinPad
-            key="new"
+            key="confirm"
+            label="Enter the new PIN once more"
             onComplete={async (pin) => {
+              if (pin !== next) {
+                setTimeout(() => setNext(null), 900);
+                return "PINs didn't match. Try again.";
+              }
               const res = await changePin(slug, current, pin);
               if (!res.ok) {
-                setTimeout(() => setCurrent(null), 900);
+                setTimeout(() => {
+                  setCurrent(null);
+                  setNext(null);
+                }, 900);
                 return res.error;
               }
               toast("PIN changed. Other phones are signed out.");

@@ -27,6 +27,8 @@ export type Rider = {
   sessionVersion: number;
   failedAttempts: number;
   lockedUntil: Date | null;
+  /** Lockouts in a row since the last correct PIN; each one lasts longer. Missing on older riders. */
+  lockouts?: number;
   activitySeenAt: Date | null;
   removedAt: Date | null;
   createdAt: Date;

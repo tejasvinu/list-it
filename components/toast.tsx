@@ -42,6 +42,19 @@ export function Toaster() {
   );
 }
 
+/**
+ * Calls a server action from the browser. A dropped connection, or a session signed out from another
+ * phone, rejects the call; this turns that into a toast instead of a broken page. Undefined on failure.
+ */
+export async function attempt<T>(action: () => Promise<T>): Promise<T | undefined> {
+  try {
+    return await action();
+  } catch {
+    toast(navigator.onLine === false ? "No signal. Try again in a bit." : "That didn't go through. Reload and try again.");
+    return undefined;
+  }
+}
+
 /** Native share sheet on phones, clipboard elsewhere. */
 export async function shareLink(opts: { title: string; text?: string; url: string }) {
   if (navigator.share) {

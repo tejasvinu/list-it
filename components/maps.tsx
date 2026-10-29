@@ -96,7 +96,8 @@ export function RouteMap({
       L.marker([dest.lat, dest.lng], { icon: pinIcon(L, color, dest.name, true) }).addTo(map);
       for (const s of stops) {
         if (s.lat != null && s.lng != null) {
-          L.marker([s.lat, s.lng], { icon: stopIcon(L, s.kind) }).bindTooltip(s.name, { direction: "top" }).addTo(map);
+          // Leaflet puts a string tooltip in as HTML, and stop names are typed by riders.
+          L.marker([s.lat, s.lng], { icon: stopIcon(L, s.kind) }).bindTooltip(escapeHtml(s.name), { direction: "top" }).addTo(map);
         }
       }
       map.fitBounds(line.getBounds(), { padding: [36, 36] });

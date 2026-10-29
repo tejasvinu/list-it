@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { markActivitySeen } from "@/app/g/[slug]/actions";
 import { STOP_KINDS, type StopKind } from "@/lib/config";
-import { prettyDate, timeAgo } from "@/lib/format";
+import { prettyDate, timeAgo, todayYmd } from "@/lib/format";
 import type { ActivityItem } from "@/lib/data";
 import { Avatar } from "./avatar";
 import { RouteArt } from "./route-art";
@@ -54,13 +54,13 @@ function describe(a: ActivityItem) {
   }
 }
 
+/** Days are counted in India, so the server (UTC) and the phone put a 1 am ride under the same heading. */
 function dayLabel(d: Date) {
-  const today = new Date();
-  const y = new Date(today);
-  y.setDate(today.getDate() - 1);
-  if (d.toDateString() === today.toDateString()) return "Today";
-  if (d.toDateString() === y.toDateString()) return "Yesterday";
-  const diff = (today.getTime() - d.getTime()) / 86400000;
+  const now = Date.now();
+  const day = todayYmd(d);
+  if (day === todayYmd(now)) return "Today";
+  if (day === todayYmd(now - 86400000)) return "Yesterday";
+  const diff = (now - d.getTime()) / 86400000;
   if (diff < 7) return "This week";
   if (diff < 31) return "This month";
   return "Earlier";
@@ -80,7 +80,8 @@ export function ActivityView({
   // Keep the "new" highlights for this visit even after we mark everything seen.
   const [seen] = useState(seenAt);
   useEffect(() => {
-    markActivitySeen(slug);
+    // Only clears the unread dot; if it fails, the dot just stays until next time.
+    markActivitySeen(slug).catch(() => {});
   }, [slug]);
 
   const groups: { label: string; items: ActivityItem[] }[] = [];

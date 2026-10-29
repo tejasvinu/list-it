@@ -54,7 +54,10 @@ export async function joinGroup(
   const nameKey = name.toLowerCase();
   const takenMsg = fail(`"${name}" is taken. If that's you, use "I'm already in".`);
   const c = await cols();
-  if (await c.riders.findOne({ groupId: ctx.group.id, nameKey })) return takenMsg;
+  const existing = await c.riders.findOne({ groupId: ctx.group.id, nameKey }, { projection: { removedAt: 1 } });
+  // A removed rider keeps their name so the admin can bring them back with their rides; say so plainly.
+  if (existing?.removedAt) return fail(`"${name}" belonged to a rider the admin removed. Ask the admin to add them back, or pick another name.`);
+  if (existing) return takenMsg;
 
   const id = rid();
   const now = new Date();
@@ -359,7 +362,8 @@ export async function addStop(
   let mapsUrl: string | null = null;
   if (link) {
     try {
-      const place = await resolvePlace(link);
+      // With a name typed in, only the coordinates are needed; skip the slow name lookup.
+      const place = await resolvePlace(link, { lookupName: !name });
       lat = place.lat;
       lng = place.lng;
       mapsUrl = place.mapsUrl;

@@ -58,7 +58,7 @@ export async function setRegistration(groupId: string, open: boolean) {
 }
 
 const resetFields = (pin: string) => ({
-  $set: { pinHash: hashPin(pin), failedAttempts: 0, lockedUntil: null },
+  $set: { pinHash: hashPin(pin), failedAttempts: 0, lockedUntil: null, lockouts: 0 },
   $inc: { sessionVersion: 1 },
 });
 

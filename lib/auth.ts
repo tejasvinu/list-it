@@ -8,6 +8,7 @@ import { allow, clientIp } from "./throttle";
 
 const MAX_FAILS = 5;
 const LOCK_MS = 10 * 60 * 1000;
+const MAX_LOCK_MS = 24 * 60 * 60 * 1000;
 const YEAR_S = 60 * 60 * 24 * 365;
 /** PIN guesses per IP, across every rider, so one phone can't walk the roster. */
 const IP_PIN_LIMIT = 30;
@@ -51,8 +52,35 @@ async function pinMatches(pin: string, stored: string) {
 
 export type PinCheck = { ok: true } | { ok: false; error: string };
 
-const lockedMessage = (until: Date) =>
-  `Too many tries. Try again in ${Math.max(1, Math.ceil((until.getTime() - Date.now()) / 60000))} min.`;
+const lockedMessage = (until: Date) => {
+  const min = Math.max(1, Math.ceil((until.getTime() - Date.now()) / 60000));
+  const wait = min < 90 ? `${min} min` : `${Math.round(min / 60)} hours`;
+  return `Too many tries. Try again in ${wait}, or ask the admin to reset your PIN.`;
+};
+
+/**
+ * Locks a rider who has used up their tries, atomically. Each lock in a row lasts six times the last
+ * (10 min, 1 h, 6 h, then a day), so a fixed 10-minute lock can't be waited out over and over to walk all
+ * 10,000 PINs. A correct PIN resets the run. Null when someone else already locked or unlocked them.
+ */
+async function lockRider(id: string, filter: object, now: Date) {
+  const c = await cols();
+  const doc = await c.riders.findOneAndUpdate(
+    { _id: id, ...filter },
+    [
+      { $set: { failedAttempts: 0, lockouts: { $add: [{ $ifNull: ["$lockouts", 0] }, 1] } } },
+      {
+        $set: {
+          lockedUntil: {
+            $add: [now, { $min: [MAX_LOCK_MS, { $multiply: [LOCK_MS, { $pow: [6, { $subtract: ["$lockouts", 1] }] }] }] }],
+          },
+        },
+      },
+    ],
+    { returnDocument: "after" },
+  );
+  return doc?.lockedUntil ?? null;
+}
 
 /**
  * Checks a PIN with a lockout after repeated misses. Each attempt is counted in the database before the
@@ -69,22 +97,18 @@ export async function verifyRiderPin(rider: Rider, pin: string): Promise<PinChec
   if (!claimed) {
     // Either locked, or every attempt is spoken for. Turn a full count into a lock (it also heals a count
     // left behind by a request that died before it could set one).
-    const until = new Date(now.getTime() + LOCK_MS);
-    await c.riders.updateOne(
-      { _id: rider.id, failedAttempts: { $gte: MAX_FAILS }, $or: [{ lockedUntil: null }, { lockedUntil: { $lte: now } }] },
-      { $set: { failedAttempts: 0, lockedUntil: until } },
-    );
-    const current = await c.riders.findOne({ _id: rider.id }, { projection: { lockedUntil: 1 } });
-    return { ok: false, error: lockedMessage(current?.lockedUntil ?? until) };
+    const until = await lockRider(rider.id, { failedAttempts: { $gte: MAX_FAILS }, $or: [{ lockedUntil: null }, { lockedUntil: { $lte: now } }] }, now);
+    const current = until ?? (await c.riders.findOne({ _id: rider.id }, { projection: { lockedUntil: 1 } }))?.lockedUntil;
+    return { ok: false, error: lockedMessage(current ?? new Date(now.getTime() + LOCK_MS)) };
   }
   if (await pinMatches(pin, claimed.pinHash)) {
-    await c.riders.updateOne({ _id: rider.id }, { $set: { failedAttempts: 0, lockedUntil: null } });
+    await c.riders.updateOne({ _id: rider.id }, { $set: { failedAttempts: 0, lockedUntil: null, lockouts: 0 } });
     return { ok: true };
   }
   const fails = claimed.failedAttempts;
   if (fails >= MAX_FAILS) {
-    await c.riders.updateOne({ _id: rider.id }, { $set: { failedAttempts: 0, lockedUntil: new Date(Date.now() + LOCK_MS) } });
-    return { ok: false, error: "Too many tries. Locked for 10 min." };
+    const until = await lockRider(rider.id, {}, new Date());
+    return { ok: false, error: lockedMessage(until ?? new Date(Date.now() + LOCK_MS)) };
   }
   return { ok: false, error: `Wrong PIN. ${MAX_FAILS - fails} ${MAX_FAILS - fails === 1 ? "try" : "tries"} left.` };
 }
@@ -142,10 +166,12 @@ export function adminSecretMatches(input: string) {
   return timingSafeEqual(digest(input), digest(secret("ADMIN_SECRET")));
 }
 
-/** Admin password tries: 10 per IP per 15 min, and 50 an hour from everywhere put together. */
+/**
+ * Admin password tries: 10 per IP per 15 min. There's deliberately no cap across all IPs: anyone could use
+ * one up and keep the real admin out. What stops guessing is a long random ADMIN_SECRET (32+ characters).
+ */
 export async function adminLoginAllowed() {
-  const ip = await clientIp();
-  return (await allow(`admin:${ip}`, 10, 15 * 60 * 1000)) && (await allow("admin:all", 50, 60 * 60 * 1000));
+  return allow(`admin:${await clientIp()}`, 10, 15 * 60 * 1000);
 }
 
 export async function startAdminSession() {

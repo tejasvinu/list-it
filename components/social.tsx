@@ -7,6 +7,7 @@ import { react, toggleIn } from "@/app/g/[slug]/actions";
 import { REACTIONS } from "@/lib/config";
 import type { RiderLite } from "@/lib/types";
 import { AvatarStack } from "./avatar";
+import { attempt } from "./toast";
 
 export type ReactionState = { mine: string | null; list: { emoji: string; rider: RiderLite }[] };
 
@@ -18,7 +19,7 @@ export function useReactions(slug: string, id: string, me: RiderLite, initial: R
     if (emoji) list.push({ emoji, rider: me });
     startTransition(async () => {
       setOptimistic({ mine: emoji, list });
-      await react(slug, id, emoji);
+      await attempt(() => react(slug, id, emoji));
     });
   };
   return { state, set };
@@ -140,7 +141,7 @@ export function InButton({
         imIn: next,
         interested: next ? [...state.interested, me] : state.interested.filter((r) => r.id !== me.id),
       });
-      await toggleIn(slug, id);
+      await attempt(() => toggleIn(slug, id));
     });
   };
   return (

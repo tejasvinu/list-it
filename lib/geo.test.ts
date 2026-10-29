@@ -81,3 +81,31 @@ test("roadSplitOf buckets steps by road class, with the city first", () => {
   ]);
   assert.deepEqual(split, { city: 10, nh: 50, sh: 20, other: 5 });
 });
+
+/** Google's polyline encoding, for building step geometries in tests. */
+function encode(points: [number, number][]) {
+  let out = "";
+  const prev = [0, 0];
+  for (const p of points) {
+    for (const i of [0, 1]) {
+      const v = Math.round(p[i] * 1e5);
+      let n = v - prev[i];
+      prev[i] = v;
+      n = n < 0 ? ~(n << 1) : n << 1;
+      while (n >= 0x20) {
+        out += String.fromCharCode((0x20 | (n & 0x1f)) + 63);
+        n >>= 5;
+      }
+      out += String.fromCharCode(n + 63);
+    }
+  }
+  return out;
+}
+
+test("roadSplitOf counts only the part of a highway step inside the city as city", () => {
+  // 100 km due north on NH 44 from the centre: the first ~22 km are in the city radius.
+  const line: [number, number][] = Array.from({ length: 101 }, (_, i) => [12.9716 + (i * 0.9) / 100, 77.5946]);
+  const split = roadSplitOf([{ distance: 100000, ref: "NH 44", geometry: encode(line), maneuver: { location: [77.5946, 12.9716] } }]);
+  assert.ok(split.city >= 20 && split.city <= 25, `city ${split.city}`);
+  assert.equal(split.city + split.nh, 100);
+});
