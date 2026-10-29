@@ -18,7 +18,7 @@ const CrewMap = dynamic(() => import("./maps").then((m) => m.CrewMap), {
   loading: () => <div className="skeleton h-full w-full" />,
 });
 
-export function CrewMapView({ slug, items }: { slug: string; items: FeedItem[] }) {
+export function CrewMapView({ slug, items, loops }: { slug: string; items: FeedItem[]; loops: { id: string; route: [number, number][] }[] }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [cats, setCats] = useState<Category[]>([...CATEGORY_KEYS]);
   const shown = useMemo(() => items.filter((d) => cats.includes(d.category as Category)), [items, cats]);
@@ -48,7 +48,7 @@ export function CrewMapView({ slug, items }: { slug: string; items: FeedItem[] }
 
   return (
     <div className="relative -mb-[calc(64px+env(safe-area-inset-bottom))] h-dvh lg:mb-0">
-      <CrewMap key={cats.join()} items={shown} selected={selected} onSelect={setSelected} className="h-full w-full" />
+      <CrewMap key={cats.join()} items={shown} loops={loops} selected={selected} onSelect={setSelected} className="h-full w-full" />
 
       <div className="absolute inset-x-0 top-0 z-[500] bg-bg px-4 pb-3 pt-[max(env(safe-area-inset-top),14px)] shadow-[0_1px_0_var(--line)] lg:hidden">
         <h1 className="display text-[30px]">Ride map</h1>

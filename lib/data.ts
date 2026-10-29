@@ -169,15 +169,20 @@ export async function getActivity(ctx: GroupContext, limit = 120) {
     .find({ _id: { $in: destIds } }, { projection: { name: 1, category: 1, route: 1, photos: 1, deletedAt: 1 } })
     .toArray();
   const destById = new Map(dests.map((d) => [d._id, d]));
+  const loopIds = [...new Set(rows.flatMap((r) => r.loopId ? [r.loopId] : []))];
+  const loops = await c.loops.find({ _id: { $in: loopIds }, groupId: ctx.group.id, deletedAt: null }).toArray();
+  const loopById = new Map(loops.map((loop) => [loop._id, loop]));
   const byId = new Map(ctx.riders.map((r) => [r.id, r]));
   return rows
     .filter((r) => byId.has(r.riderId))
     .filter((r) => !r.destinationId || (destById.has(r.destinationId) && !destById.get(r.destinationId)!.deletedAt))
+    .filter((r) => !r.loopId || loopById.has(r.loopId))
     .map((r) => {
       const d = r.destinationId ? destById.get(r.destinationId) : undefined;
       return {
         ...r,
         rider: byId.get(r.riderId)!,
+        loopName: r.loopId ? loopById.get(r.loopId)?.name ?? null : null,
         destName: d?.name ?? null,
         destCategory: d?.category ?? null,
         destRoute: d?.route ?? null,

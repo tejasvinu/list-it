@@ -1,7 +1,7 @@
 import "server-only";
 import { cols } from "./db";
 import type { WeatherDay } from "./weather-types";
-const UA = "list-it/1.0 (https://list-it-kappa.vercel.app; private ride planner for a riding group)";
+import { UA } from "./geo";
 export async function forecast(point: { lat: number; lng: number }): Promise<WeatherDay[] | null> {
   const key = { lat: Number(point.lat.toFixed(2)), lng: Number(point.lng.toFixed(2)) };
   const c = await cols();

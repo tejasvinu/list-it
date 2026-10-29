@@ -157,3 +157,28 @@ export function validStart(value: unknown) {
   const name = clean(v.name, 80);
   return name && inRange(v.lat, v.lng) ? { name, lat: v.lat as number, lng: v.lng as number } : null;
 }
+
+/** Validate loop inputs independently of any route supplied by the browser. */
+export function validateLoop(raw: unknown) {
+  if (!raw || typeof raw !== "object") return null;
+  const v = raw as Record<string, unknown>;
+  const name = clean(v.name, 80);
+  if (!name || !Array.isArray(v.stops) || v.stops.length < 1 || v.stops.length > 20) return null;
+  const stops = v.stops.map((item: unknown) => {
+    if (!item || typeof item !== "object") return null;
+    const s = item as Record<string, unknown>;
+    const name = clean(s.name, 80);
+    if (!name || !inRange(s.lat, s.lng) || typeof s.nightHere !== "boolean") return null;
+    if (s.destinationId !== null && (typeof s.destinationId !== "string" || !s.destinationId || s.destinationId.length > 80)) return null;
+    return { destinationId: s.destinationId as string | null, name, lat: s.lat as number, lng: s.lng as number, nightHere: s.nightHere };
+  });
+  if (stops.some((s) => !s)) return null;
+  let startDate: string | null = null;
+  if (v.startDate !== null && v.startDate !== undefined && v.startDate !== "") {
+    if (typeof v.startDate !== "string" || !YMD.test(v.startDate) || v.startDate < "1900-01-01" || v.startDate > "9998-12-31") return null;
+    const date = new Date(`${v.startDate}T00:00:00Z`);
+    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== v.startDate) return null;
+    startDate = v.startDate;
+  }
+  return { name, notes: cleanMultiline(v.notes, 2000) || null, stops: stops as import("./types").LoopStop[], startDate };
+}

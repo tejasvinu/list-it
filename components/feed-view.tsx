@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { FeedSwitch } from "./feed-switch";
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { UserPlus } from "lucide-react";
@@ -117,6 +118,7 @@ export function FeedView({
             </motion.button>
           )}
         </div>
+        <FeedSwitch slug={slug} current="rides" />
       </header>
 
       {items.length > 0 && !filtered && (

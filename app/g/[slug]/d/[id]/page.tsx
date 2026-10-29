@@ -5,6 +5,7 @@ import { getDestination, getGroupContext, lite } from "@/lib/data";
 import { categoryOf, duration, km } from "@/lib/format";
 import { originRoute } from "@/lib/origin-routes";
 import { forecast } from "@/lib/weather";
+import { getLoops } from "@/lib/loop-data";
 import { DestinationView } from "@/components/destination-view";
 
 export async function generateMetadata({ params }: PageProps<"/g/[slug]/d/[id]">): Promise<Metadata> {
@@ -25,6 +26,6 @@ export default async function DestinationPage({ params }: PageProps<"/g/[slug]/d
   if (!ctx.viewer) return null;
   const d = await getDestination(ctx, id);
   if (!d) notFound();
-  const [origin, weather] = await Promise.all([ctx.viewer.start ? originRoute(d, ctx.viewer.start) : null, forecast(d)]);
-  return <DestinationView d={{ ...d, fromYou: origin && ctx.viewer.start ? { name: ctx.viewer.start.name, distanceKm: origin.distanceKm, durationMin: origin.durationMin, approx: origin.approx } : null }} slug={slug} me={lite(ctx.viewer)} riders={ctx.riders} weather={weather} />;
+  const [origin, weather, loops] = await Promise.all([ctx.viewer.start ? originRoute(d, ctx.viewer.start) : null, forecast(d), getLoops(ctx)]);
+  return <DestinationView d={{ ...d, fromYou: origin && ctx.viewer.start ? { name: ctx.viewer.start.name, distanceKm: origin.distanceKm, durationMin: origin.durationMin, approx: origin.approx } : null }} slug={slug} me={lite(ctx.viewer)} riders={ctx.riders} weather={weather} loops={loops.filter((loop) => loop.riderId === ctx.viewer!.id).map(({ id, name }) => ({ id, name }))} />;
 }

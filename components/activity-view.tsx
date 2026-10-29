@@ -13,6 +13,10 @@ import { RouteArt } from "./route-art";
 function describe(a: ActivityItem) {
   const dest = <span className="font-semibold">{a.destName}</span>;
   switch (a.kind) {
+    case "loop-added":
+      return <>added a loop, <span className="font-semibold">{a.loopName}</span></>;
+    case "loop-in":
+      return <>is in for <span className="font-semibold">{a.loopName}</span></>;
     case "joined":
       return <>joined the crew</>;
     case "added":
@@ -142,7 +146,9 @@ export function ActivityView({
               );
               return (
                 <li key={a.id}>
-                  {a.destinationId ? (
+                  {a.loopId ? (
+                    <Link href={`/g/${slug}/loops/${a.loopId}`}>{row}</Link>
+                  ) : a.destinationId ? (
                     <Link href={`/g/${slug}/d/${a.destinationId}${a.kind === "commented" ? "#comments" : a.kind === "stop" ? "#stops" : ""}`}>{row}</Link>
                   ) : (
                     <Link href={`/g/${slug}/r/${a.riderId}`}>{row}</Link>

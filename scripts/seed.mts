@@ -3,6 +3,9 @@ import "./env.mts";
 import { cols, getDb, toDoc, type Activity, type Destination, type Group, type Rider } from "../lib/db.ts";
 import { hashPin } from "../lib/auth.ts";
 import { rid, groupSlug } from "../lib/ids.ts";
+import { HOME } from "../lib/config.ts";
+import { routeLoop } from "../lib/loop-routing.ts";
+import type { Loop, LoopStop } from "../lib/types.ts";
 import { resolvePlace, routeFromHome, photosNear } from "../lib/geo.ts";
 
 const DEMO_PIN = "1234";
@@ -56,6 +59,7 @@ const places = [
   { link: "https://www.google.com/maps/place/Mettur+Dam/@11.7956,77.8067,14z/data=!3d11.7956!4d77.8067", by: 3, cat: "day", tags: ["highway", "scenic"], hairpins: null, status: "wishlist", notes: "Pair with Yercaud for a two-day loop." },
 ];
 
+const loopStops: LoopStop[] = [];
 for (const [i, p] of places.entries()) {
   const place = await resolvePlace(p.link);
   if (p.name) place.name = p.name;
@@ -74,6 +78,14 @@ for (const [i, p] of places.entries()) {
     }),
   );
   await log(ids[p.by], "added", id);
+  if (i === 0 || i === 4) loopStops.push({ destinationId: id, name: place.name, lat: place.lat, lng: place.lng, nightHere: i === 0 });
+  if (i === 2) {
+    await c.rides.insertMany([
+      { destinationId: id, riderId: ids[1], date, note: "A sunrise worth the early start.", loggedBy: ids[1], createdAt },
+      { destinationId: id, riderId: ids[2], date, note: null, loggedBy: ids[1], createdAt },
+    ]);
+    await c.destinations.updateOne({ _id: id }, { $set: { status: "wishlist", statusDate: null } });
+  }
   for (const [j, rider] of ids.entries()) {
     if (j !== p.by && (i + j) % 2 === 0) {
       const emoji = ["🔥", "🤘", "😍"][j % 3];
@@ -94,6 +106,15 @@ for (const [i, p] of places.entries()) {
   }
   console.log("✓", place.name, r.distanceKm, "km", photos.length, "photos");
 }
+
+const loopId = rid(10);
+const loopRoute = await routeLoop(HOME, loopStops);
+await c.loops.insertOne(toDoc<Loop>({
+  id: loopId, groupId, riderId: ids[0], name: "Yercaud and Mettur", notes: "A night in the hills, then home via the dam.",
+  stops: loopStops, start: HOME, startDate: null, ...loopRoute, createdAt: new Date(), updatedAt: new Date(), deletedAt: null,
+}));
+await c.loopInterests.insertMany(ids.slice(0, 2).map((riderId) => ({ loopId, riderId, createdAt: new Date() })));
+await c.activity.insertOne(toDoc<Activity>({ id: rid(), groupId, riderId: ids[0], kind: "loop-added", destinationId: null, loopId, detail: null, createdAt: new Date() }));
 
 console.log(`\nDemo crew ready: /g/${slug}\nRiders: ${crew.map((x) => x[0]).join(", ")} (PIN ${DEMO_PIN})`);
 await (await getDb()).client.close();

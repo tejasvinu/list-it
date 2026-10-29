@@ -168,11 +168,13 @@ export type CrewMapItem = {
 
 export function CrewMap({
   items,
+  loops,
   selected,
   onSelect,
   className,
 }: {
   items: CrewMapItem[];
+  loops: { id: string; route: [number, number][] }[];
   selected: string | null;
   onSelect: (id: string | null) => void;
   className?: string;
@@ -204,6 +206,11 @@ export function CrewMap({
         home.extend([d.lat, d.lng]);
         byId.set(d.id, { line, marker, item: d });
       }
+      for (const loop of loops) {
+        if (loop.route.length < 2) continue;
+        const line = L.polyline(loop.route, { color: "#E2513A", weight: 3, opacity: 0.8, dashArray: "8 7" }).addTo(map);
+        home.extend(line.getBounds());
+      }
       L.marker([HOME.lat, HOME.lng], { icon: homeIcon(L) }).addTo(map);
       map.on("click", () => selectRef.current(null));
       map.fitBounds(home, fitAll());
@@ -212,7 +219,7 @@ export function CrewMap({
         layers.current = null;
       };
     },
-    [JSON.stringify(items.map((i) => i.id))],
+    [JSON.stringify(items), JSON.stringify(loops)],
   );
 
   // Restyle in place when the selection changes, so the map never reloads.
@@ -233,5 +240,34 @@ export function CrewMap({
     else map.flyToBounds(home, { ...fitAll(), duration: 0.8 });
   }, [selected]);
 
+  return <div ref={ref} className={`isolate ${className ?? ""}`} />;
+}
+
+
+const DAY_COLORS = ["#3A78F0", "#E2513A", "#13A189", "#F07A1F", "#20A059"];
+
+/** Numbered stops and one colour for each day's routed legs. */
+export function LoopMap({ start, stops, legs, className }: {
+  start: import("@/lib/types").StartPoint;
+  stops: import("@/lib/types").LoopStop[];
+  legs: import("@/lib/types").LoopLeg[];
+  className?: string;
+}) {
+  const ref = useLeafletMap((L, map) => {
+    const bounds = L.latLngBounds([[start.lat, start.lng]]);
+    let day = 0;
+    legs.forEach((leg, i) => {
+      const line = L.polyline(leg.route, { color: DAY_COLORS[day % DAY_COLORS.length], weight: 4, opacity: 0.9 }).addTo(map);
+      if (leg.route.length) bounds.extend(line.getBounds());
+      if (stops[i]?.nightHere) day++;
+    });
+    L.marker([start.lat, start.lng], { icon: pinIcon(L, "#121311", start.name, true) }).addTo(map);
+    stops.forEach((stop, i) => {
+      const icon = L.divIcon({ className: "", iconSize: [26, 26], iconAnchor: [13, 13], html: `<div style="display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--text);color:var(--inverse);font-weight:700">${i + 1}</div>` });
+      L.marker([stop.lat, stop.lng], { icon }).bindTooltip(escapeHtml(stop.name)).addTo(map);
+      bounds.extend([stop.lat, stop.lng]);
+    });
+    map.fitBounds(bounds, { padding: [35, 35] });
+  }, [JSON.stringify(start), JSON.stringify(stops), JSON.stringify(legs)]);
   return <div ref={ref} className={`isolate ${className ?? ""}`} />;
 }

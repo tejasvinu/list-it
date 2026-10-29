@@ -1,7 +1,8 @@
 import "server-only";
 import { MongoClient, type Collection, type Db } from "mongodb";
 import { attachDatabasePool } from "@vercel/functions";
-import type { Photo, RoadSplit, StartPoint } from "./types";
+import type { Photo, RoadSplit, StartPoint, Loop } from "./types";
+export type { Loop } from "./types";
 
 // ---------- Shapes (as the app sees them; stored with `_id` instead of `id`) ----------
 
@@ -107,8 +108,12 @@ export type Activity = {
   kind: string;
   destinationId: string | null;
   detail: string | null;
+  loopId?: string | null;
   createdAt: Date;
 };
+
+export type LoopInterest = { loopId: string; riderId: string; createdAt: Date };
+export type LoopComment = { id: string; loopId: string; riderId: string; body: string; createdAt: Date; deletedAt: Date | null };
 
 export type OriginRoute = { destinationId: string; lat: number; lng: number; distanceKm: number; durationMin: number; approx: boolean; destinationLat: number; destinationLng: number; updatedAt: Date };
 export type WeatherCache = { lat: number; lng: number; days: import("./weather-types").WeatherDay[]; updatedAt: Date };
@@ -161,6 +166,9 @@ async function connect() {
 
 async function ensureIndexes(db: Db) {
   await Promise.all([
+    db.collection("loops").createIndex({ groupId: 1, createdAt: -1 }),
+    db.collection("loopInterests").createIndex({ loopId: 1, riderId: 1 }, { unique: true }),
+    db.collection("loopComments").createIndex({ loopId: 1, createdAt: 1 }),
     db.collection("groups").createIndex({ slug: 1 }, { unique: true }),
     db.collection("riders").createIndex({ groupId: 1, nameKey: 1 }, { unique: true }),
     db.collection("destinations").createIndex({ groupId: 1, createdAt: -1 }),
@@ -205,6 +213,9 @@ export function getDb() {
 export async function cols() {
   const db = await getDb();
   return {
+    loops: db.collection<Stored<Loop>>("loops"),
+    loopInterests: db.collection<LoopInterest>("loopInterests"),
+    loopComments: db.collection<Stored<LoopComment>>("loopComments"),
     groups: db.collection<Stored<Group>>("groups"),
     riders: db.collection<Stored<Rider>>("riders"),
     destinations: db.collection<Stored<Destination>>("destinations"),

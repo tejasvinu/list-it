@@ -4,7 +4,7 @@ import type { Photo, RoadSplit } from "./types";
 import { isGoogleMapsHost } from "./validate";
 
 // Wikimedia and Nominatim want a UA that says who we are and how to reach us.
-const UA = "list-it/1.0 (https://list-it-kappa.vercel.app; private ride planner for a riding group)";
+export const UA = "list-it/1.0 (https://list-it-kappa.vercel.app; private ride planner for a riding group)";
 const timeout = (ms: number) => AbortSignal.timeout(ms);
 
 export type Place = {
@@ -101,7 +101,7 @@ type LatLng = { lat: number; lng: number };
 /** Photon search, ranked towards `near` (Bengaluru unless the link says where it was looking). */
 async function photon(q: string, limit = 5, near: LatLng = HOME): Promise<PhotonFeature[]> {
   const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lat=${near.lat}&lon=${near.lng}&limit=${limit}&lang=en`;
-  const res = await fetch(url, { headers: { "User-Agent": UA }, signal: timeout(7000) });
+  const res = await fetch(url, { headers: { "User-Agent": UA }, signal: timeout(7000), next: { revalidate: 3600 } });
   if (!res.ok) return [];
   const json = (await res.json()) as { features?: PhotonFeature[] };
   // Keep to India, and push streets named after a place ("Nandi Hills Road") below the place itself.
@@ -115,6 +115,7 @@ async function reverseArea(lat: number, lng: number) {
     const res = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&lang=en`, {
       headers: { "User-Agent": UA },
       signal: timeout(6000),
+      next: { revalidate: 3600 },
     });
     const json = (await res.json()) as { features?: PhotonFeature[] };
     const f = json.features?.[0];
@@ -148,7 +149,7 @@ async function geocodePostcode(pin: string) {
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?postalcode=${pin}&countrycodes=in&format=jsonv2&limit=1`,
-      { headers: { "User-Agent": UA }, signal: timeout(7000) },
+      { headers: { "User-Agent": UA }, signal: timeout(7000), next: { revalidate: 3600 } },
     );
     const [hit] = (await res.json()) as { lat: string; lon: string; display_name: string }[];
     return hit ? { lat: Number(hit.lat), lng: Number(hit.lon) } : null;
@@ -198,8 +199,9 @@ async function expandShortLink(url: string) {
     if (!/(^|\.)goo\.gl$|^g\.co$/.test(host)) return current;
     const res = await fetch(current, {
       redirect: "manual",
-      headers: { "User-Agent": "Mozilla/5.0" },
+      headers: { "User-Agent": UA },
       signal: timeout(7000),
+      next: { revalidate: 3600 },
     });
     const next = res.headers.get("location");
     if (!next) return current;

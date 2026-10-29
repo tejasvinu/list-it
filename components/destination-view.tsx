@@ -37,6 +37,7 @@ import { Milestone } from "./milestone";
 import { RoadSplitBar } from "./road-split";
 import { Sheet } from "./sheet";
 import { InButton, ReactionButton, ReactionSummary, useReactions } from "./social";
+import { AddToLoop } from "./add-to-loop";
 import { RideLog } from "./ride-log";
 import { WeatherBlock } from "./weather-block";
 import type { WeatherDay } from "@/lib/weather-types";
@@ -47,7 +48,7 @@ const RouteMap = dynamic(() => import("./maps").then((m) => m.RouteMap), {
   loading: () => <div className="skeleton h-full w-full" />,
 });
 
-export function DestinationView({ d, slug, me, riders, weather }: { d: DestinationDetail; slug: string; me: RiderLite; riders: RiderLite[]; weather: WeatherDay[] | null }) {
+export function DestinationView({ d, slug, me, riders, weather, loops }: { d: DestinationDetail; slug: string; me: RiderLite; riders: RiderLite[]; weather: WeatherDay[] | null; loops: { id: string; name: string }[] }) {
   const router = useRouter();
   // Rides from removed riders can be looked after by anyone, or nobody could ever change them.
   const mine = d.owner.id === me.id || d.ownerGone;
@@ -123,6 +124,7 @@ export function DestinationView({ d, slug, me, riders, weather }: { d: Destinati
         {d.fromYou && <p className="num mt-4 text-[15px] text-muted">From {d.fromYou.name}: {d.fromYou.approx ? "about " : ""}{km(d.fromYou.distanceKm)} round trip, {duration(d.fromYou.durationMin)}</p>}
         <div className="mt-7 flex flex-wrap items-center gap-3">
           <InButton slug={slug} id={d.id} me={me} imIn={d.imIn} interested={d.interested} />
+          <AddToLoop slug={slug} rideId={d.id} loops={loops} />
           <a href={googleMapsRoute(d.lat, d.lng)} target="_blank" rel="noreferrer" className="btn btn-line">
             <Navigation size={16} /> Route in Maps
           </a>

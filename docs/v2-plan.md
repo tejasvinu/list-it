@@ -96,6 +96,10 @@ Written 29 October 2026. This is the brief for v2: every README roadmap item tha
 - Seasons are winter (December–February), summer (March–May), monsoon (June–September), and post-monsoon (October–November), in IST. For the northeast monsoon heuristic, the east side is longitude 77° E or farther east and south of 13.5° N.
 - Logging someone already in the ride log updates their date but preserves their note and original logger. A rider's personal note is saved only when that rider is selected.
 
+- A loop snapshots its creator's start point when created; editing the rider's profile later does not move the loop. A loop can contain up to 20 stops. A deleted ride remains as a named place in an existing loop and becomes an unlinked place when the loop is edited.
+- A night at the last stop still leaves a final day for the ride home. Days over either limit are warnings only. OSRM failures use a 1.3-times straight-line estimate per leg at 50 km/h, marked as approximate.
+- OSRM previews are cached for an hour; saved routes live on the loop. Loop comments and attendance use separate collections, and loop activity points to the loop. Concurrent edits are rejected if the saved loop changes while it is being routed.
+
 ## Progress
 
 ### Phase 1 — implementation in progress
@@ -104,3 +108,9 @@ Written 29 October 2026. This is the brief for v2: every README roadmap item tha
 - `npm run typecheck` and `npm run build` passed. The 22 unit tests passed when invoked directly with a temporary workaround for Windows Node's failing `os.userInfo()` call; `npm test` itself failed before running tests. Lint passed on `app`, `components` and `lib`; a later full lint run included temporary browser-check files and failed on those generated files.
 - The requested browser checks at 390 and 1440 px remain outstanding. Automated review rejected the scripted session-cookie check and rejected access to an existing Edge window containing unrelated personal tabs. The port 3100 server was stopped.
 - Temporary `.phase1-check/` and `.check-node.cjs` files remain because automatic review rejected their removal. The temporary directory includes a copy of `.env.local` and a junction to the repository's `node_modules`; remove the junction itself before recursively removing the temporary directory. Do not commit either temporary path.
+
+### Phase 2 — loops and circuits
+
+- Added loop creation, editing and deletion, stop search and ride selection, live routing and day splits, overnight forecasts, attendance, comments, activity and dashed crew-map routes. Added the feed switch, add chooser and ride-to-loop sheet. The demo seed now includes a Yercaud–Mettur loop and ride-log entries.
+- Checked the new server-render paths, membership and ownership checks, route fallback, deleted-ride handling and stale-edit protection in code. Added unit tests for day splits, date validation, OSRM legs and fallback. `npm run typecheck`, `npm run lint` and `npm run build` passed. `npm test` failed before running tests because Windows `os.userInfo()` returned `uv_os_get_passwd` ENOMEM; all 26 tests passed using the specified direct `tsx` command with a temporary preload.
+- Browser checks at 390 and 1440 px were skipped as directed for this sandbox; the orchestrator will run them. The seed script was updated but not run against the database.
