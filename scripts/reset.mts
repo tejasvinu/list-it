@@ -4,7 +4,7 @@ import "./env.mts";
 import { MongoClient } from "mongodb";
 
 const uri = process.env.MONGODB_URI!;
-const name = process.env.MONGODB_DB || "list-it";
+const name = process.env.MONGODB_DB!;
 const local = /^mongodb:\/\/(localhost|127\.0\.0\.1)/.test(uri);
 if (!local && !process.argv.includes("--force")) {
   console.error(`MONGODB_URI is not a local database. Refusing to drop "${name}". Re-run with --force if you really mean it.`);

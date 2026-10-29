@@ -107,6 +107,11 @@ export type Activity = {
   createdAt: Date;
 };
 
+/** Fixed-window counter for rate limits; expires on its own at `resetAt`. */
+export type Throttle = { _id: string; count: number; resetAt: Date };
+/** A signed-in admin device; deleting the row signs it out. */
+export type AdminSession = { _id: string; expiresAt: Date };
+
 type Stored<T> = T extends { id: string } ? Omit<T, "id"> & { _id: string } : T;
 
 /** Stored document -> app shape. */
@@ -130,12 +135,19 @@ const globalForDb = globalThis as unknown as { mongo?: Promise<Db> };
 
 async function connect() {
   const uri = process.env.MONGODB_URI;
+  const name = process.env.MONGODB_DB;
   if (!uri) throw new Error("MONGODB_URI is not set");
+  // No default: falling back to a name could quietly point a dev machine at production.
+  if (!name) throw new Error("MONGODB_DB is not set");
+  const local = /^mongodb:\/\/(localhost|127\.0\.0\.1)/.test(uri);
+  if (!process.env.VERCEL && !local && !name.endsWith("-dev") && process.env.ALLOW_REMOTE_DB !== "1") {
+    throw new Error(`Refusing to use remote database "${name}" outside Vercel. Set ALLOW_REMOTE_DB=1 if you mean it.`);
+  }
   const client = new MongoClient(uri, { maxPoolSize: 10, appName: "list-it" });
   // Lets Vercel close idle connections cleanly when a function instance is suspended.
   attachDatabasePool(client);
   await client.connect();
-  const db = client.db(process.env.MONGODB_DB || "list-it");
+  const db = client.db(name);
   await ensureIndexes(db);
   await migrate(db);
   return db;
@@ -152,6 +164,10 @@ async function ensureIndexes(db: Db) {
     db.collection("comments").createIndex({ destinationId: 1, createdAt: 1 }),
     db.collection("stops").createIndex({ destinationId: 1, createdAt: 1 }),
     db.collection("activity").createIndex({ groupId: 1, createdAt: -1 }),
+    db.collection("activity").createIndex({ destinationId: 1, riderId: 1, kind: 1 }),
+    db.collection("destinations").createIndex({ status: 1 }),
+    db.collection("throttle").createIndex({ resetAt: 1 }, { expireAfterSeconds: 0 }),
+    db.collection("adminSessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
   ]);
 }
 
@@ -190,5 +206,7 @@ export async function cols() {
     interests: db.collection<Interest>("interests") as Collection<Interest>,
     rides: db.collection<Ride>("rides") as Collection<Ride>,
     activity: db.collection<Stored<Activity>>("activity"),
+    throttle: db.collection<Throttle>("throttle"),
+    adminSessions: db.collection<AdminSession>("adminSessions"),
   };
 }

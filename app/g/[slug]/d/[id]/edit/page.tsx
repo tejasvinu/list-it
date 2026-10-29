@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { getDestination, getGroupContext } from "@/lib/data";
 import { DestinationForm } from "@/components/destination-form";
 import { suggestCategory, type Category } from "@/lib/config";
+import { sealRoute } from "@/lib/seal";
 
 export const metadata = { title: "Edit ride" };
 
@@ -11,8 +12,19 @@ export default async function EditPage({ params }: PageProps<"/g/[slug]/d/[id]/e
   if (!ctx.viewer) return null;
   const d = await getDestination(ctx, id);
   if (!d) notFound();
-  if (d.owner.id !== ctx.viewer.id) redirect(`/g/${slug}/d/${id}`);
-  const ownerRide = d.riddenBy.find((r) => r.rider.id === d.owner.id);
+  if (d.owner.id !== ctx.viewer.id && !d.ownerGone) redirect(`/g/${slug}/d/${id}`);
+  // The form's "Ridden" means the person editing has ridden it.
+  const myRide = d.riddenBy.find((r) => r.rider.id === ctx.viewer!.id);
+  const routed = {
+    lat: d.lat,
+    lng: d.lng,
+    mapsUrl: d.mapsUrl,
+    distanceKm: d.distanceKm,
+    durationMin: d.durationMin,
+    approx: d.approx,
+    route: d.route,
+    roadSplit: d.roadSplit,
+  };
 
   return (
     <DestinationForm
@@ -21,19 +33,14 @@ export default async function EditPage({ params }: PageProps<"/g/[slug]/d/[id]/e
       initial={{
         name: d.name,
         preview: {
+          ...routed,
           name: d.name,
           area: d.area,
-          lat: d.lat,
-          lng: d.lng,
-          mapsUrl: d.mapsUrl,
-          distanceKm: d.distanceKm,
-          durationMin: d.durationMin,
-          approx: d.approx,
-          route: d.route,
-          roadSplit: d.roadSplit,
           photos: d.photos,
+          photosFailed: false,
           suggested: suggestCategory(d.distanceKm),
           nearby: [],
+          seal: sealRoute(routed),
         },
         details: {
           category: d.category as Category,
@@ -41,9 +48,8 @@ export default async function EditPage({ params }: PageProps<"/g/[slug]/d/[id]/e
           seasons: d.seasons,
           hairpins: d.hairpins,
           notes: d.notes ?? "",
-          // The form's "Ridden" means the owner has ridden it.
-          status: ownerRide ? "done" : d.status,
-          statusDate: ownerRide ? ownerRide.date : d.statusDate,
+          status: myRide ? "done" : d.status,
+          statusDate: myRide ? myRide.date : d.statusDate,
           rideReport: d.rideReport ?? "",
         },
       }}

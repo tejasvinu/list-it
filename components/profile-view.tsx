@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { ArrowLeft, KeyRound, LogOut, Palette } from "lucide-react";
+import { ArrowLeft, KeyRound, Loader2, LogOut, Pencil } from "lucide-react";
 import { changePin, signOut, updateProfile } from "@/app/g/[slug]/actions";
 import { AVATAR_COLORS, AVATAR_EMOJIS } from "@/lib/config";
 import { duration } from "@/lib/format";
@@ -83,7 +83,7 @@ export function ProfileView({
         {isMe && (
           <div className="mt-6 flex flex-wrap gap-2">
             <button onClick={() => setStyleOpen(true)} className="btn btn-quiet !min-h-10 !px-4 text-[14px]">
-              <Palette size={15} /> Avatar
+              <Pencil size={15} /> Edit profile
             </button>
             <button onClick={() => setPinOpen(true)} className="btn btn-quiet !min-h-10 !px-4 text-[14px]">
               <KeyRound size={15} /> Change PIN
@@ -155,7 +155,7 @@ export function ProfileView({
 
       {isMe && (
         <>
-          <StyleSheet open={styleOpen} onClose={() => setStyleOpen(false)} slug={slug} rider={rider} />
+          <ProfileSheet open={styleOpen} onClose={() => setStyleOpen(false)} slug={slug} rider={rider} />
           <PinSheet open={pinOpen} onClose={() => setPinOpen(false)} slug={slug} />
         </>
       )}
@@ -172,15 +172,36 @@ function Figure({ value, label }: { value: string; label: string }) {
   );
 }
 
-function StyleSheet({ open, onClose, slug, rider }: { open: boolean; onClose: () => void; slug: string; rider: RiderLite }) {
+function ProfileSheet({ open, onClose, slug, rider }: { open: boolean; onClose: () => void; slug: string; rider: RiderLite }) {
+  const [name, setName] = useState(rider.name);
   const [emoji, setEmoji] = useState(rider.emoji);
   const [color, setColor] = useState(rider.color);
+  const [error, setError] = useState<string | null>(null);
   const [busy, start] = useTransition();
+  const trimmed = name.replace(/\s+/g, " ").trim();
   return (
-    <Sheet open={open} onClose={onClose} title="Your avatar">
+    <Sheet open={open} onClose={onClose} title="Your profile">
       <div className="mb-5 flex justify-center">
-        <Avatar rider={{ name: rider.name, emoji, color }} size={84} />
+        <Avatar rider={{ name: trimmed || rider.name, emoji, color }} size={84} />
       </div>
+      <label htmlFor="profile-name" className="mb-1.5 block text-[14px] font-semibold">
+        Name
+      </label>
+      <input
+        id="profile-name"
+        value={name}
+        onChange={(e) => {
+          setName(e.target.value);
+          setError(null);
+        }}
+        maxLength={24}
+        autoComplete="nickname"
+        aria-describedby="profile-name-help"
+        className="field"
+      />
+      <p id="profile-name-help" className={`mb-5 mt-1.5 text-[14px] ${error ? "text-danger" : "text-faint"}`}>
+        {error ?? "What the crew sees on your rides, comments and stops."}
+      </p>
       <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-10">
         {AVATAR_EMOJIS.map((e) => (
           <button
@@ -207,17 +228,21 @@ function StyleSheet({ open, onClose, slug, rider }: { open: boolean; onClose: ()
         ))}
       </div>
       <button
-        disabled={busy}
+        disabled={busy || trimmed.length < 2}
         onClick={() =>
           start(async () => {
-            await updateProfile(slug, { emoji, color });
+            const res = await updateProfile(slug, { name: trimmed, emoji, color });
+            if (!res.ok) {
+              setError(res.error);
+              return;
+            }
             onClose();
-            toast("Avatar saved");
+            toast("Profile saved");
           })
         }
         className="btn btn-ink mt-6 w-full !min-h-12"
       >
-        Save avatar
+        {busy && <Loader2 size={16} className="animate-spin" />} Save profile
       </button>
     </Sheet>
   );

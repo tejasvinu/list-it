@@ -1,6 +1,7 @@
 import "server-only";
 import { HOME, suggestCategory, type Category } from "./config";
 import type { Photo, RoadSplit } from "./types";
+import { isGoogleMapsHost } from "./validate";
 
 // Wikimedia and Nominatim want a UA that says who we are and how to reach us.
 const UA = "list-it/1.0 (https://list-it-kappa.vercel.app; private ride planner for a riding group)";
@@ -66,7 +67,7 @@ function olcPrefix(lat: number, lng: number, digits: number) {
 }
 
 /** Turns a short code like "26X6+737" into coordinates using a nearby reference point. */
-function olcRecover(short: string, refLat: number, refLng: number) {
+export function olcRecover(short: string, refLat: number, refLng: number) {
   const sep = short.indexOf("+");
   if (sep >= 8) return olcDecode(short);
   const padding = 8 - sep;
@@ -81,7 +82,7 @@ function olcRecover(short: string, refLat: number, refLng: number) {
   return { lat, lng };
 }
 
-const PLUS_CODE = /^([23456789CFGHJMPQRVWX]{2,8}\+[23456789CFGHJMPQRVWX]{0,3})\s*,?\s*(.*)$/i;
+export const PLUS_CODE = /^([23456789CFGHJMPQRVWX]{2,8}\+[23456789CFGHJMPQRVWX]{0,3})\s*,?\s*(.*)$/i;
 
 // ---------- Geocoding (Photon / OpenStreetMap) ----------
 
@@ -95,8 +96,11 @@ function photonArea(p: PhotonFeature["properties"]) {
   return parts.length ? [...new Set(parts)].join(", ") : null;
 }
 
-async function photon(q: string, limit = 5): Promise<PhotonFeature[]> {
-  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lat=${HOME.lat}&lon=${HOME.lng}&limit=${limit}&lang=en`;
+type LatLng = { lat: number; lng: number };
+
+/** Photon search, ranked towards `near` (Bengaluru unless the link says where it was looking). */
+async function photon(q: string, limit = 5, near: LatLng = HOME): Promise<PhotonFeature[]> {
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lat=${near.lat}&lon=${near.lng}&limit=${limit}&lang=en`;
   const res = await fetch(url, { headers: { "User-Agent": UA }, signal: timeout(7000) });
   if (!res.ok) return [];
   const json = (await res.json()) as { features?: PhotonFeature[] };
@@ -157,7 +161,7 @@ async function geocodePostcode(pin: string) {
  * Geocodes Google's "Name, Locality, State 123456" text. Tries the most specific parts first,
  * then the PIN code, and only falls back to the bare state as a last resort.
  */
-async function geocodeText(text: string, { preferPostcode = false } = {}) {
+async function geocodeText(text: string, { preferPostcode = false, near = HOME as LatLng } = {}) {
   const pin = text.match(/\b(\d{6})\b/)?.[1];
   const parts = text
     .split(",")
@@ -171,7 +175,7 @@ async function geocodeText(text: string, { preferPostcode = false } = {}) {
   // Fire every candidate at once, then take the most specific answer.
   const [byPostcode, ...byName] = await Promise.all([
     pin ? geocodePostcode(pin) : Promise.resolve(null),
-    ...parts.map((_, i) => photon(parts.slice(i).join(", "), 1).catch(() => [])),
+    ...parts.map((_, i) => photon(parts.slice(i).join(", "), 1, near).catch(() => [])),
   ]);
   const postcode = byPostcode ? { ...byPostcode, area: null } : null;
   if (preferPostcode && postcode) return postcode;
@@ -213,7 +217,7 @@ function decodeSegment(s: string) {
 }
 
 /** Pulls out a name and/or coordinates from a long Google Maps URL. */
-function parseMapsUrl(raw: string) {
+export function parseMapsUrl(raw: string) {
   const url = new URL(raw);
   const path = url.pathname;
   let lat: number | undefined;
@@ -250,37 +254,81 @@ function parseMapsUrl(raw: string) {
     }
   }
 
-  // Viewport centre as a last resort
-  if (lat === undefined && !text) {
-    const at = path.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-    if (at) {
-      lat = Number(at[1]);
-      lng = Number(at[2]);
-    }
+  // Where the map was looking. Used outright when there's nothing else, and otherwise to keep a
+  // name lookup from wandering off to a different place with the same name.
+  const at = path.match(/@(-?\d+\.\d+),(-?\d+\.\d+)(?:,(\d+(?:\.\d+)?)z)?/);
+  const view = at ? { lat: Number(at[1]), lng: Number(at[2]), zoom: at[3] ? Number(at[3]) : null } : null;
+  if (lat === undefined && !text && view) {
+    lat = view.lat;
+    lng = view.lng;
   }
-  return { lat, lng, text };
+  return { lat, lng, text, view };
 }
 
-/** Accepts a Google Maps link (short or long), a WhatsApp message containing one, or "lat, lng". */
+/** A geocoded name further than this from a zoomed-in map view is probably a namesake. */
+const VIEW_TRUST_KM = 40;
+
+/** Splits Google's "Name, Locality, State 123456" into a name and a short area. */
+function nameAndArea(text: string) {
+  const parts = text.split(",").map((s) => s.trim()).filter(Boolean);
+  const area =
+    parts
+      .slice(1)
+      .map((s) => s.replace(/\b\d{6}\b/, "").trim())
+      .filter((s) => s && !/\bR\.?F\.?$/i.test(s))
+      .slice(-2)
+      .join(", ") || null;
+  return { name: parts[0] ?? null, area };
+}
+
+type Found = { name: string | null; area: string | null; lat: number; lng: number; mapsUrl: string | null };
+
+/** Fills in a missing name or area from the coordinates. */
+async function finish(place: Found): Promise<Place> {
+  let { name, area } = place;
+  if (!name || !area) {
+    const rev = await reverseArea(place.lat, place.lng);
+    name = name ?? rev?.name ?? "Dropped pin";
+    area = area ?? rev?.area ?? null;
+  }
+  return { ...place, name, area };
+}
+
+/** "Q4XQ+2C Kotagiri, Tamil Nadu": a short plus code needs the locality after it to know which grid square. */
+async function fromPlusCode(code: string, locality: string) {
+  const short = code.indexOf("+") < 8;
+  const geo = locality ? await geocodeText(locality, { preferPostcode: true }) : null;
+  if (short && !geo) throw new Error("Couldn't place that plus code. Add the town after it, or search by name.");
+  return olcRecover(code, geo?.lat ?? HOME.lat, geo?.lng ?? HOME.lng);
+}
+
+/** Accepts a Google Maps link (short or long), a WhatsApp message containing one, a plus code, or "lat, lng". */
 export async function resolvePlace(input: string): Promise<Place> {
-  const trimmed = input.trim();
+  const trimmed = String(input ?? "").trim();
   const linkMatch = trimmed.match(/https?:\/\/\S+/);
 
   if (!linkMatch) {
     const m = trimmed.match(COORD);
-    if (m) {
-      const lat = Number(m[1]);
-      const lng = Number(m[2]);
-      const rev = await reverseArea(lat, lng);
-      return { name: rev?.name ?? "Dropped pin", area: rev?.area ?? null, lat, lng, mapsUrl: null };
+    if (m) return finish({ name: null, area: null, lat: Number(m[1]), lng: Number(m[2]), mapsUrl: null });
+    const plus = trimmed.match(PLUS_CODE);
+    if (plus) {
+      const { lat, lng } = await fromPlusCode(plus[1], plus[2]);
+      const area = plus[2].replace(/\b\d{6}\b/, "").replace(/[\s,]+$/, "").trim() || null;
+      return finish({ name: null, area, lat, lng, mapsUrl: null });
     }
     throw new Error("Paste a Google Maps link, or search by name instead.");
   }
 
   const original = linkMatch[0];
-  const expanded = await expandShortLink(original);
-  const host = new URL(expanded).hostname;
-  if (!/google\.|goo\.gl/.test(host)) throw new Error("That doesn't look like a Google Maps link.");
+  const notMaps = new Error("That doesn't look like a Google Maps link.");
+  let expanded: string;
+  try {
+    if (!isGoogleMapsHost(new URL(original).hostname)) throw notMaps;
+    expanded = await expandShortLink(original);
+    if (!isGoogleMapsHost(new URL(expanded).hostname)) throw notMaps;
+  } catch (e) {
+    throw e === notMaps ? e : new Error("Couldn't open that link. Copy it again from Google Maps.");
+  }
 
   const parsed = parseMapsUrl(expanded);
   let name: string | null = null;
@@ -291,49 +339,35 @@ export async function resolvePlace(input: string): Promise<Place> {
     let text = parsed.text;
     const plus = text.match(PLUS_CODE);
     if (plus) text = plus[2];
-    const parts = text.split(",").map((s) => s.trim()).filter(Boolean);
-    name = parts[0] ?? null;
-    if (parts.length > 1) {
-      area = parts
-        .slice(1)
-        .map((s) => s.replace(/\b\d{6}\b/, "").trim())
-        .filter((s) => s && !/\bR\.?F\.?$/i.test(s))
-        .slice(-2)
-        .join(", ") || null;
-    }
+    ({ name, area } = nameAndArea(text));
 
     if (lat === undefined || lng === undefined) {
-      // A plus code only needs a reference point within ~50 km, and the PIN code is the safest one.
-      const geo = await geocodeText(text, { preferPostcode: !!plus });
       if (plus) {
-        if (!geo && plus[1].indexOf("+") < 8) throw new Error("Couldn't place that plus code. Try searching by name.");
-        const exact = olcRecover(plus[1], geo?.lat ?? HOME.lat, geo?.lng ?? HOME.lng);
-        lat = exact.lat;
-        lng = exact.lng;
-      } else if (geo) {
-        lat = geo.lat;
-        lng = geo.lng;
+        ({ lat, lng } = await fromPlusCode(plus[1], text));
+      } else {
+        const view = parsed.view;
+        const geo = await geocodeText(text, { near: view ?? HOME });
+        // A zoomed-in view is better evidence than a name lookup that landed somewhere else.
+        const trustView = !!view && (view.zoom ?? 0) >= 10 && (!geo || haversineKm(geo, view) > VIEW_TRUST_KM);
+        const at = trustView ? view : (geo ?? view);
+        if (at) {
+          lat = at.lat;
+          lng = at.lng;
+        }
+        if (!trustView) area = area ?? geo?.area ?? null;
       }
-      area = area ?? geo?.area ?? null;
     }
   }
 
   if (lat === undefined || lng === undefined) {
     throw new Error("Couldn't find a location in that link. Try searching by name instead.");
   }
-
-  if (!name || !area) {
-    const rev = await reverseArea(lat, lng);
-    name = name ?? rev?.name ?? "Dropped pin";
-    area = area ?? rev?.area ?? null;
-  }
-
-  return { name, area, lat, lng, mapsUrl: original };
+  return finish({ name, area, lat, lng, mapsUrl: original });
 }
 
 // ---------- Routing (OSRM) ----------
 
-function decodePolyline(str: string): [number, number][] {
+export function decodePolyline(str: string): [number, number][] {
   const points: [number, number][] = [];
   let index = 0;
   let lat = 0;
@@ -358,7 +392,7 @@ function decodePolyline(str: string): [number, number][] {
 }
 
 /** Ramer–Douglas–Peucker, in degrees. Good enough at these scales. */
-function simplify(points: [number, number][], epsilon: number): [number, number][] {
+export function simplify(points: [number, number][], epsilon: number): [number, number][] {
   if (points.length < 3) return points;
   const keep = new Uint8Array(points.length);
   keep[0] = keep[points.length - 1] = 1;
@@ -408,7 +442,7 @@ const CITY_RADIUS_KM = 22;
 type OsrmStep = { distance: number; ref?: string; maneuver: { location: [number, number] } };
 
 /** Buckets each routing step by road class, so riders see "mostly NH" vs "country roads". */
-function roadSplitOf(steps: OsrmStep[]): RoadSplit {
+export function roadSplitOf(steps: OsrmStep[]): RoadSplit {
   const split: RoadSplit = { city: 0, nh: 0, sh: 0, other: 0 };
   for (const step of steps) {
     const [lng, lat] = step.maneuver.location;
@@ -492,8 +526,11 @@ type CommonsPage = {
 
 const stripHtml = (s?: string) => (s ? s.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() || null : null);
 
-/** Finds up to six photos taken near a place, preferring scenery that mentions the place name. */
-export async function photosNear(place: { name: string; lat: number; lng: number }): Promise<Photo[]> {
+/**
+ * Finds up to six photos taken near a place, preferring scenery that mentions the place name.
+ * Returns null when Commons couldn't be asked, which is different from there being no photos.
+ */
+export async function photosNear(place: { name: string; lat: number; lng: number }): Promise<Photo[] | null> {
   try {
     const url =
       "https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=geosearch" +
@@ -511,7 +548,10 @@ export async function photosNear(place: { name: string; lat: number; lng: number
       await new Promise((r) => setTimeout(r, 1200));
       json = await get();
     }
-    if (json.error) console.warn("[photos] Commons said no:", json.error.code, json.error.info);
+    if (json.error) {
+      console.warn("[photos] Commons said no:", json.error.code, json.error.info);
+      return null;
+    }
     const words = place.name
       .toLowerCase()
       .split(/[^a-z]+/)
@@ -528,7 +568,7 @@ export async function photosNear(place: { name: string; lat: number; lng: number
         if (words.some((w) => title.toLowerCase().includes(w))) score += 3;
         if (SCENIC.test(title)) score += 2;
         if ((info.thumbwidth ?? 0) > (info.thumbheight ?? 0)) score += 1;
-        if (/^[A-Z][a-z]+ [a-z]+/.test(title) && !SCENIC.test(title)) score -= 3; // likely a plant or insect
+        if (/^[A-Z][a-z]+ [a-z]+b/.test(title) && !SCENIC.test(title)) score -= 3; // likely a plant or insect
         return {
           score,
           photo: {
@@ -545,6 +585,6 @@ export async function photosNear(place: { name: string; lat: number; lng: number
       .map((x) => x.photo);
   } catch (e) {
     console.warn("[photos] lookup failed:", e instanceof Error ? e.message : e);
-    return [];
+    return null;
   }
 }

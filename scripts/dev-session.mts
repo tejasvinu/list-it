@@ -5,7 +5,7 @@ import { createHmac } from "node:crypto";
 import { MongoClient } from "mongodb";
 
 const client = await MongoClient.connect(process.env.MONGODB_URI!);
-const db = client.db(process.env.MONGODB_DB || "list-it");
+const db = client.db(process.env.MONGODB_DB!);
 const name = (process.argv[2] ?? "karthik").toLowerCase();
 const r = await db.collection<{ _id: string; groupId: string; sessionVersion: number }>("riders").findOne(
   { nameKey: name },

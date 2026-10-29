@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cols, toDoc, type Group, type Rider } from "@/lib/db";
-import { adminSecretMatches, endAdminSession, hashPin, isAdmin, isValidPin, startAdminSession } from "@/lib/auth";
+import { adminLoginAllowed, adminSecretMatches, endAdminSession, hashPin, isAdmin, isValidPin, startAdminSession } from "@/lib/auth";
 import { groupSlug, rid } from "@/lib/ids";
 import { logActivity } from "@/lib/data";
 import { AVATAR_COLORS, AVATAR_EMOJIS, REGISTRATION_DAYS } from "@/lib/config";
@@ -16,6 +16,7 @@ const days = (n: number) => new Date(Date.now() + n * 86400000);
 
 export async function adminLogin(_: string | null, form: FormData) {
   const secret = String(form.get("secret") ?? "");
+  if (!(await adminLoginAllowed())) return "Too many tries. Wait a while.";
   if (!secret || !adminSecretMatches(secret)) {
     await new Promise((r) => setTimeout(r, 800));
     return "Nope.";

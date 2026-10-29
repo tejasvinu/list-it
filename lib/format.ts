@@ -33,17 +33,19 @@ export function prettyDate(ymd: string, opts: Intl.DateTimeFormatOptions = { wee
   return new Date(Date.UTC(y, mo - 1, d)).toLocaleDateString("en-IN", { ...opts, timeZone: "UTC" });
 }
 
-export function daysUntil(ymd: string) {
-  const [y, mo, d] = ymd.split("-").map(Number);
-  const target = Date.UTC(y, mo - 1, d);
-  const now = new Date();
-  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-  return Math.round((target - today) / 86400000);
+/**
+ * Today as YYYY-MM-DD in India. Servers run on UTC, so the local date would be yesterday until 5:30 am IST,
+ * and the server and the phone would disagree while rendering the same page.
+ */
+export function todayYmd(now: Date | number = Date.now()) {
+  // en-CA formats dates as YYYY-MM-DD
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(now);
 }
 
-export function todayYmd() {
-  const n = new Date();
-  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+export function daysUntil(ymd: string, now: Date | number = Date.now()) {
+  const [y, mo, d] = ymd.split("-").map(Number);
+  const [ty, tmo, td] = todayYmd(now).split("-").map(Number);
+  return Math.round((Date.UTC(y, mo - 1, d) - Date.UTC(ty, tmo - 1, td)) / 86400000);
 }
 
 export function categoryOf(c: string) {

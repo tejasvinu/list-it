@@ -1,12 +1,20 @@
 import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, scrypt, scryptSync, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
 import { cols, fromDoc, type Group, type Rider } from "./db";
+import { allow, clientIp } from "./throttle";
 
 const MAX_FAILS = 5;
 const LOCK_MS = 10 * 60 * 1000;
 const YEAR_S = 60 * 60 * 24 * 365;
+/** PIN guesses per IP, across every rider, so one phone can't walk the roster. */
+const IP_PIN_LIMIT = 30;
+const IP_PIN_WINDOW_MS = 10 * 60 * 1000;
+const ADMIN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+const scryptAsync = promisify(scrypt) as (pin: string, salt: string, len: number) => Promise<Buffer>;
 
 function secret(name: "SESSION_SECRET" | "ADMIN_SECRET") {
   const value = process.env[name];
@@ -36,36 +44,49 @@ export function hashPin(pin: string) {
   return `${salt}:${hash}`;
 }
 
-function pinMatches(pin: string, stored: string) {
+async function pinMatches(pin: string, stored: string) {
   const [salt, hash] = stored.split(":");
-  return safeEqual(scryptSync(pin, salt, 32).toString("base64url"), hash);
+  return safeEqual((await scryptAsync(pin, salt, 32)).toString("base64url"), hash);
 }
 
 export type PinCheck = { ok: true } | { ok: false; error: string };
 
-/** Checks a PIN with a lockout after repeated misses. */
+const lockedMessage = (until: Date) =>
+  `Too many tries. Try again in ${Math.max(1, Math.ceil((until.getTime() - Date.now()) / 60000))} min.`;
+
+/**
+ * Checks a PIN with a lockout after repeated misses. Each attempt is counted in the database before the
+ * PIN is compared, so parallel guesses can't all slip in under one count.
+ */
 export async function verifyRiderPin(rider: Rider, pin: string): Promise<PinCheck> {
-  const now = Date.now();
-  if (rider.lockedUntil && rider.lockedUntil.getTime() > now) {
-    const mins = Math.ceil((rider.lockedUntil.getTime() - now) / 60000);
-    return { ok: false, error: `Too many tries. Try again in ${mins} min.` };
+  if (!(await allow(`pin:${await clientIp()}`, IP_PIN_LIMIT, IP_PIN_WINDOW_MS))) {
+    return { ok: false, error: "Too many PIN tries from this phone. Wait a few minutes." };
   }
-  if (pinMatches(pin, rider.pinHash)) {
-    if (rider.failedAttempts) {
-      await (await cols()).riders.updateOne({ _id: rider.id }, { $set: { failedAttempts: 0, lockedUntil: null } });
-    }
+  const c = await cols();
+  const now = new Date();
+  const open = { _id: rider.id, failedAttempts: { $lt: MAX_FAILS }, $or: [{ lockedUntil: null }, { lockedUntil: { $lte: now } }] };
+  const claimed = await c.riders.findOneAndUpdate(open, { $inc: { failedAttempts: 1 } }, { returnDocument: "after" });
+  if (!claimed) {
+    // Either locked, or every attempt is spoken for. Turn a full count into a lock (it also heals a count
+    // left behind by a request that died before it could set one).
+    const until = new Date(now.getTime() + LOCK_MS);
+    await c.riders.updateOne(
+      { _id: rider.id, failedAttempts: { $gte: MAX_FAILS }, $or: [{ lockedUntil: null }, { lockedUntil: { $lte: now } }] },
+      { $set: { failedAttempts: 0, lockedUntil: until } },
+    );
+    const current = await c.riders.findOne({ _id: rider.id }, { projection: { lockedUntil: 1 } });
+    return { ok: false, error: lockedMessage(current?.lockedUntil ?? until) };
+  }
+  if (await pinMatches(pin, claimed.pinHash)) {
+    await c.riders.updateOne({ _id: rider.id }, { $set: { failedAttempts: 0, lockedUntil: null } });
     return { ok: true };
   }
-  const fails = rider.failedAttempts + 1;
-  const locked = fails >= MAX_FAILS;
-  await (await cols()).riders.updateOne(
-    { _id: rider.id },
-    { $set: { failedAttempts: locked ? 0 : fails, lockedUntil: locked ? new Date(now + LOCK_MS) : null } },
-  );
-  return {
-    ok: false,
-    error: locked ? "Too many tries. Locked for 10 min." : `Wrong PIN. ${MAX_FAILS - fails} ${MAX_FAILS - fails === 1 ? "try" : "tries"} left.`,
-  };
+  const fails = claimed.failedAttempts;
+  if (fails >= MAX_FAILS) {
+    await c.riders.updateOne({ _id: rider.id }, { $set: { failedAttempts: 0, lockedUntil: new Date(Date.now() + LOCK_MS) } });
+    return { ok: false, error: "Too many tries. Locked for 10 min." };
+  }
+  return { ok: false, error: `Wrong PIN. ${MAX_FAILS - fails} ${MAX_FAILS - fails === 1 ? "try" : "tries"} left.` };
 }
 
 // ---------- Rider sessions (one signed cookie per group) ----------
@@ -114,25 +135,40 @@ export function registrationOpen(group: Group) {
 
 const ADMIN_COOKIE = "list_it_admin";
 
+const digest = (s: string) => createHash("sha256").update(s).digest();
+
+/** Compares fixed-length digests, so the secret's length doesn't leak through timing. */
 export function adminSecretMatches(input: string) {
-  return safeEqual(input, secret("ADMIN_SECRET"));
+  return timingSafeEqual(digest(input), digest(secret("ADMIN_SECRET")));
+}
+
+/** Admin password tries: 10 per IP per 15 min, and 50 an hour from everywhere put together. */
+export async function adminLoginAllowed() {
+  const ip = await clientIp();
+  return (await allow(`admin:${ip}`, 10, 15 * 60 * 1000)) && (await allow("admin:all", 50, 60 * 60 * 1000));
 }
 
 export async function startAdminSession() {
-  (await cookies()).set(ADMIN_COOKIE, sign(`admin.${secret("ADMIN_SECRET")}`), {
+  const token = randomBytes(32).toString("base64url");
+  await (await cols()).adminSessions.insertOne({ _id: token, expiresAt: new Date(Date.now() + ADMIN_TTL_MS) });
+  (await cookies()).set(ADMIN_COOKIE, token, {
     httpOnly: true,
     sameSite: "strict",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: ADMIN_TTL_MS / 1000,
   });
 }
 
 export async function endAdminSession() {
-  (await cookies()).delete(ADMIN_COOKIE);
+  const store = await cookies();
+  const token = store.get(ADMIN_COOKIE)?.value;
+  if (token) await (await cols()).adminSessions.deleteOne({ _id: token });
+  store.delete(ADMIN_COOKIE);
 }
 
-export async function isAdmin() {
-  const raw = (await cookies()).get(ADMIN_COOKIE)?.value;
-  return !!raw && safeEqual(raw, sign(`admin.${secret("ADMIN_SECRET")}`));
-}
+export const isAdmin = cache(async () => {
+  const token = (await cookies()).get(ADMIN_COOKIE)?.value;
+  if (!token) return false;
+  return !!(await (await cols()).adminSessions.findOne({ _id: token, expiresAt: { $gt: new Date() } }));
+});

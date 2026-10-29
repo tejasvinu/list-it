@@ -59,7 +59,8 @@ const places = [
 for (const [i, p] of places.entries()) {
   const place = await resolvePlace(p.link);
   if (p.name) place.name = p.name;
-  const [r, photos] = await Promise.all([routeFromHome(place), photosNear(place)]);
+  const [r, found] = await Promise.all([routeFromHome(place), photosNear(place)]);
+  const photos = found ?? [];
   const id = rid(10);
   const date = p.date !== undefined ? new Date(now + p.date * 86400000).toISOString().slice(0, 10) : null;
   const createdAt = new Date(now - (places.length - i) * 3600000 * 7);

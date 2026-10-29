@@ -48,7 +48,8 @@ const RouteMap = dynamic(() => import("./maps").then((m) => m.RouteMap), {
 
 export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: string; me: RiderLite }) {
   const router = useRouter();
-  const mine = d.owner.id === me.id;
+  // Rides from removed riders can be looked after by anyone, or nobody could ever change them.
+  const mine = d.owner.id === me.id || d.ownerGone;
   const { state, set } = useReactions(slug, d.id, me, { mine: d.myReaction, list: d.reactions });
   const [menu, setMenu] = useState(false);
   const [statusSheet, setStatusSheet] = useState(false);
@@ -72,6 +73,14 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
             <ArrowLeft size={20} />
           </button>
           <div className="pointer-events-auto flex gap-2">
+            {mine && (
+              <Link
+                href={`/g/${slug}/d/${d.id}/edit`}
+                className="float flex h-11 items-center gap-2 rounded-full bg-surface px-4 text-[15px] font-semibold text-text"
+              >
+                <Pencil size={16} /> Edit ride
+              </Link>
+            )}
             <button onClick={share} className="float grid h-11 w-11 place-items-center rounded-full bg-surface text-text" aria-label="Share">
               <Share size={19} />
             </button>
@@ -125,9 +134,15 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
           ) : (
             "Nobody's in yet. Be the first."
           )}{" "}
-          <Link href={`/g/${slug}/r/${d.owner.id}`} className="text-faint hover:text-text" suppressHydrationWarning>
-            Added by {d.owner.id === me.id ? "you" : d.owner.name} {timeAgo(d.createdAt)} ago.
-          </Link>
+          {d.ownerGone ? (
+            <span className="text-faint" suppressHydrationWarning>
+              Added by a former rider {timeAgo(d.createdAt)} ago. Anyone in the crew can edit it.
+            </span>
+          ) : (
+            <Link href={`/g/${slug}/r/${d.owner.id}`} className="text-faint hover:text-text" suppressHydrationWarning>
+              Added by {d.owner.id === me.id ? "you" : d.owner.name} {timeAgo(d.createdAt)} ago.
+            </Link>
+          )}
         </p>
 
         <div className="mt-6 flex items-center gap-2">
@@ -206,9 +221,6 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
 
       <Sheet open={menu} onClose={() => setMenu(false)}>
         <div className="space-y-1">
-          <MenuItem href={`/g/${slug}/d/${d.id}/edit`} icon={<Pencil size={18} />}>
-            Edit ride
-          </MenuItem>
           <MenuItem
             icon={busy ? <Loader2 size={18} className="animate-spin" /> : <ImagePlus size={18} />}
             onClick={() =>

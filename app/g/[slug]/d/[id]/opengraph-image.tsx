@@ -7,7 +7,10 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 export const alt = "Ride preview";
 
-/** WhatsApp link preview: the route, the numbers, and a photo if we have one. */
+/**
+ * WhatsApp link preview: the route and the numbers. No background photo: a photo under the route made the
+ * PNG about 700 KB, and WhatsApp tends to skip preview images that big.
+ */
 export default async function Image({ params }: { params: Promise<{ slug: string; id: string }> }) {
   const { slug, id } = await params;
   const c = await cols();
@@ -32,22 +35,10 @@ export default async function Image({ params }: { params: Promise<{ slug: string
   const path = d.route.map(([la, ln], i) => `${i ? "L" : "M"}${pt(la, ln).map((v) => v.toFixed(1)).join(" ")}`).join("");
   const [hx, hy] = pt(HOME.lat, HOME.lng);
   const [dx, dy] = pt(d.lat, d.lng);
-  const photo = d.photos[0]?.thumb;
 
   return new ImageResponse(
     (
       <div style={{ width: "100%", height: "100%", display: "flex", background: "#09090b", color: "#fff", position: "relative" }}>
-        {photo && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={photo} alt="" width={1200} height={630} style={{ position: "absolute", inset: 0, objectFit: "cover", opacity: 0.35 }} />
-        )}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: "linear-gradient(90deg, #09090b 0%, rgba(9,9,11,0.85) 45%, rgba(9,9,11,0.3) 100%)",
-          }}
-        />
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end", padding: 64, width: 680, position: "relative" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 26, color: "#a3a3ad" }}>
             <div style={{ width: 16, height: 16, borderRadius: 99, background: color }} />

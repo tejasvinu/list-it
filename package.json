@@ -9,6 +9,7 @@
     "lint": "eslint",
     "seed": "tsx --conditions=react-server scripts/seed.mts",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --conditions=react-server --test \"lib/**/*.test.ts\"",
     "reset": "tsx scripts/reset.mts"
   },
   "dependencies": {

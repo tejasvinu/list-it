@@ -24,9 +24,9 @@ import {
   previewFromPlace,
   searchPlacesAction,
   updateDestination,
-  type DestinationInput,
   type Preview,
 } from "@/app/g/[slug]/actions";
+import type { DestinationInput } from "@/lib/validate";
 import {
   CATEGORIES,
   CATEGORY_KEYS,
@@ -106,11 +106,13 @@ export function DestinationForm({
   const movePin = async (lat: number, lng: number) => {
     if (!preview) return;
     setMoving(true);
-    const res = await previewFromPlace(slug, { name, area: preview.area, lat, lng, mapsUrl: preview.mapsUrl });
+    const res = await previewFromPlace(slug, { name, area: preview.area, lat, lng, mapsUrl: null });
     setMoving(false);
     if (res.ok) {
       setPreview({ ...res.preview, name });
       toast(`Pin moved: ${km(res.preview.distanceKm)} round trip`);
+    } else {
+      toast(res.error);
     }
   };
 
@@ -128,6 +130,7 @@ export function DestinationForm({
       approx: preview.approx,
       route: preview.route,
       roadSplit: preview.roadSplit,
+      seal: preview.seal,
       photos: preview.photos,
       ...details,
     };
@@ -250,6 +253,13 @@ export function DestinationForm({
                     ))}
                   </div>
                 </div>
+              )}
+
+              {preview.photosFailed && preview.photos.length === 0 && (
+                <p className="flex items-start gap-2 rounded-panel bg-surface p-3 text-[15px] text-muted">
+                  <TriangleAlert size={16} className="mt-0.5 shrink-0" />
+                  Wikimedia Commons is busy, so no photos yet. Save the ride, then try “Find photos again” from its menu later.
+                </p>
               )}
 
               {preview.photos.length > 0 && (

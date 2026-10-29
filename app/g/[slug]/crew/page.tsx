@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ChevronRight, Lock, UserPlus } from "lucide-react";
-import { getFeed, getGroupContext } from "@/lib/data";
+import { getGroupContext, getRiderCounts } from "@/lib/data";
 import { Avatar } from "@/components/avatar";
 import { BackButton } from "@/components/back-button";
 
@@ -10,7 +10,7 @@ export default async function CrewPage({ params }: PageProps<"/g/[slug]/crew">) 
   const { slug } = await params;
   const ctx = await getGroupContext(slug);
   if (!ctx.viewer) return null;
-  const feed = await getFeed(ctx);
+  const countsFor = await getRiderCounts(ctx);
   const closes = ctx.group.registrationClosesAt;
 
   return (
@@ -40,8 +40,7 @@ export default async function CrewPage({ params }: PageProps<"/g/[slug]/crew">) 
 
       <ul className="mt-4 lg:-mx-3">
         {ctx.riders.map((r) => {
-          const added = feed.filter((d) => d.riderId === r.id).length;
-          const ridden = feed.filter((d) => d.riddenBy.some((x) => x.rider.id === r.id)).length;
+          const { added, ridden } = countsFor(r.id);
           return (
             <li key={r.id}>
               <Link href={`/g/${slug}/r/${r.id}`} className="flex items-center gap-4 rounded-panel px-4 py-3 transition-colors hover:bg-surface lg:px-3">

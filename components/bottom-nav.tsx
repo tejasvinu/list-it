@@ -60,7 +60,7 @@ export function BottomNav({ slug, me, unread, groupName }: { slug: string; me: R
                 item.icon && <item.icon size={22} strokeWidth={item.active ? 2.3 : 1.8} />
               )}
               {!item.plus && (
-                <span className={`text-[11px] font-semibold leading-none lg:text-[15px] lg:font-medium ${item.active ? "lg:font-semibold" : ""}`}>
+                <span className={`text-[12px] font-semibold leading-none lg:text-[15px] lg:font-medium ${item.active ? "lg:font-semibold" : ""}`}>
                   <span className="lg:hidden">{item.label}</span>
                   <span className="hidden lg:inline">{item.me ? me.name : item.label}</span>
                 </span>

@@ -20,18 +20,10 @@ import {
   type Place,
   type RoutedPlace,
 } from "@/lib/geo";
-import {
-  AVATAR_COLORS,
-  AVATAR_EMOJIS,
-  CATEGORY_KEYS,
-  REACTIONS,
-  ROAD_TAG_KEYS,
-  SEASON_KEYS,
-  STATUS_KEYS,
-  STOP_KIND_KEYS,
-} from "@/lib/config";
-import { todayYmd } from "@/lib/format";
-import type { Photo, RoadSplit } from "@/lib/types";
+import { AVATAR_COLORS, AVATAR_EMOJIS, REACTIONS, STATUS_KEYS, STOP_KIND_KEYS } from "@/lib/config";
+import { routeSealOk, sealRoute } from "@/lib/seal";
+import { clean, cleanMultiline, inRange, validateDestination, type DestinationInput } from "@/lib/validate";
+import type { Photo } from "@/lib/types";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -44,11 +36,6 @@ async function requireRider(slug: string) {
 }
 
 const refresh = (slug: string) => revalidatePath(`/g/${slug}`, "layout");
-
-const clean = (s: unknown, max: number) =>
-  typeof s === "string" ? s.replace(/\s+/g, " ").trim().slice(0, max) : "";
-const cleanMultiline = (s: unknown, max: number) =>
-  typeof s === "string" ? s.replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim().slice(0, max) : "";
 
 // ---------- Joining & signing in ----------
 
@@ -121,7 +108,11 @@ export async function signOut(slug: string) {
 
 export type Preview = RoutedPlace & {
   photos: Photo[];
+  /** Commons didn't answer, so there may well be photos; worth trying again later */
+  photosFailed: boolean;
   nearby: { id: string; name: string; owner: string }[];
+  /** Server signature over the route numbers; saving checks it */
+  seal: string;
 };
 
 async function preview(ctx: Awaited<ReturnType<typeof requireRider>>, place: Place): Promise<Preview> {
@@ -138,7 +129,7 @@ async function preview(ctx: Awaited<ReturnType<typeof requireRider>>, place: Pla
   const nearby = existing
     .filter((d) => kmBetween(d, place) < 3)
     .map((d) => ({ id: d._id, name: d.name, owner: names.get(d.riderId) ?? "Someone" }));
-  return { ...routed, photos, nearby };
+  return { ...routed, photos: photos ?? [], photosFailed: photos === null, nearby, seal: sealRoute(routed) };
 }
 
 export async function previewFromLink(slug: string, link: string): Promise<Result<{ preview: Preview }>> {
@@ -152,7 +143,7 @@ export async function previewFromLink(slug: string, link: string): Promise<Resul
 
 export async function previewFromPlace(slug: string, place: Place): Promise<Result<{ preview: Preview }>> {
   const ctx = await requireRider(slug);
-  if (!Number.isFinite(place.lat) || !Number.isFinite(place.lng)) return fail("Bad location.");
+  if (!inRange(place?.lat, place?.lng)) return fail("That spot is too far from Bengaluru to ride.");
   return {
     ok: true,
     preview: await preview(ctx, {
@@ -160,7 +151,8 @@ export async function previewFromPlace(slug: string, place: Place): Promise<Resu
       area: clean(place.area, 80) || null,
       lat: place.lat,
       lng: place.lng,
-      mapsUrl: place.mapsUrl,
+      // A searched or moved pin has no Maps link of its own; one from the browser can't be trusted.
+      mapsUrl: null,
     }),
   };
 }
@@ -168,98 +160,13 @@ export async function previewFromPlace(slug: string, place: Place): Promise<Resu
 export async function searchPlacesAction(slug: string, q: string): Promise<Place[]> {
   await requireRider(slug);
   try {
-    return await searchPlaces(q.slice(0, 80));
+    return typeof q === "string" ? await searchPlaces(q.slice(0, 80)) : [];
   } catch {
     return [];
   }
 }
 
 // ---------- Destinations ----------
-
-export type DestinationInput = {
-  name: string;
-  area: string | null;
-  mapsUrl: string | null;
-  lat: number;
-  lng: number;
-  distanceKm: number;
-  durationMin: number;
-  approx: boolean;
-  route: [number, number][];
-  roadSplit: RoadSplit | null;
-  photos: Photo[];
-  category: string;
-  tags: string[];
-  seasons: string[];
-  hairpins: number | null;
-  notes: string;
-  status: string;
-  statusDate: string | null;
-  rideReport: string;
-};
-
-function validate(input: DestinationInput) {
-  const num = (n: unknown) => typeof n === "number" && Number.isFinite(n);
-  if (!num(input.lat) || !num(input.lng) || !num(input.distanceKm) || !num(input.durationMin)) return null;
-  if (!Array.isArray(input.route) || input.route.length < 2 || input.route.length > 1500) return null;
-  if (!input.route.every((p) => Array.isArray(p) && p.length === 2 && num(p[0]) && num(p[1]))) return null;
-  const name = clean(input.name, 60);
-  if (!name) return null;
-  const known = new Set<string>(ROAD_TAG_KEYS);
-  const tags = [
-    ...new Set(
-      (input.tags ?? [])
-        .map((t) => (known.has(t) ? t : clean(t, 24).toLowerCase().replace(/^#/, "").replace(/[^\p{L}\p{N} -]/gu, "")))
-        .filter(Boolean),
-    ),
-  ].slice(0, 12);
-  // Commons serves thumbnails from more than one host (upload., thumb.), so allow any wikimedia.org one.
-  const fromWikimedia = (u: unknown) => {
-    try {
-      const url = new URL(String(u));
-      return url.protocol === "https:" && url.hostname.endsWith(".wikimedia.org");
-    } catch {
-      return false;
-    }
-  };
-  const photos = (input.photos ?? [])
-    .filter((p) => fromWikimedia(p.thumb) && fromWikimedia(p.page))
-    .slice(0, 6)
-    .map((p) => ({
-      thumb: p.thumb,
-      page: p.page,
-      title: clean(p.title, 120),
-      credit: p.credit ? clean(p.credit, 60) : null,
-      license: p.license ? clean(p.license, 30) : null,
-    }));
-  const split = input.roadSplit;
-  const status = STATUS_KEYS.includes(input.status as never) ? input.status : "wishlist";
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(input.statusDate ?? "") ? input.statusDate : null;
-  return {
-    name,
-    area: clean(input.area, 80) || null,
-    mapsUrl: typeof input.mapsUrl === "string" && /^https:\/\//.test(input.mapsUrl) ? input.mapsUrl.slice(0, 600) : null,
-    lat: input.lat,
-    lng: input.lng,
-    distanceKm: Math.round(input.distanceKm),
-    durationMin: Math.round(input.durationMin),
-    approx: !!input.approx,
-    route: input.route,
-    roadSplit:
-      split && ["city", "nh", "sh", "other"].every((k) => num(split[k as keyof RoadSplit])) ? split : null,
-    photos,
-    category: CATEGORY_KEYS.includes(input.category as never) ? input.category : "day",
-    tags,
-    seasons: (input.seasons ?? []).filter((s) => SEASON_KEYS.includes(s as never)),
-    hairpins: num(input.hairpins) && input.hairpins! >= 0 ? Math.min(999, Math.round(input.hairpins!)) : null,
-    notes: cleanMultiline(input.notes, 2000) || null,
-    // "Ridden" in the form means the person saving it has ridden it; that's kept per rider in `rides`.
-    status: status === "done" ? "wishlist" : status,
-    statusDate: status === "planned" ? date : null,
-    rideReport: status === "done" ? cleanMultiline(input.rideReport, 3000) || null : null,
-    riddenOn: status === "done" ? (date ?? todayYmd()) : null,
-  };
-}
 
 /** Marks (date) or unmarks (null) a ride as ridden by the viewer, keeping the activity feed in step. */
 async function setRidden(ctx: Awaited<ReturnType<typeof requireRider>>, id: string, date: string | null) {
@@ -273,9 +180,15 @@ async function setRidden(ctx: Awaited<ReturnType<typeof requireRider>>, id: stri
   if (res.upsertedCount) await logActivity(ctx.log, "done", id, date);
 }
 
+/** Cleans the form and checks the route numbers are the ones the server worked out. */
+function checkInput(input: DestinationInput) {
+  const valid = validateDestination(input);
+  return valid && routeSealOk(input, input.seal) ? valid : null;
+}
+
 export async function createDestination(slug: string, input: DestinationInput): Promise<Result<{ id: string }>> {
   const ctx = await requireRider(slug);
-  const valid = validate(input);
+  const valid = checkInput(input);
   if (!valid) return fail("Something's off with that place. Try finding it again.");
   const { riddenOn, ...data } = valid;
   const id = rid(10);
@@ -292,15 +205,17 @@ export async function createDestination(slug: string, input: DestinationInput): 
 async function ownDestination(ctx: Awaited<ReturnType<typeof requireRider>>, id: string) {
   const row = fromDoc<Destination>(await (await cols()).destinations.findOne({ _id: id, groupId: ctx.group.id, deletedAt: null }));
   if (!row) throw new Error("Not found");
-  if (row.riderId !== ctx.viewer.id) throw new Error("Only the rider who added this can change it");
+  // Rides from riders the admin removed would otherwise be stuck, so the crew looks after them.
+  const ownerGone = !ctx.riders.some((r) => r.id === row.riderId);
+  if (row.riderId !== ctx.viewer.id && !ownerGone) throw new Error("Only the rider who added this can change it");
   return row;
 }
 
 export async function updateDestination(slug: string, id: string, input: DestinationInput): Promise<Result> {
   const ctx = await requireRider(slug);
   const before = await ownDestination(ctx, id);
-  const valid = validate(input);
-  if (!valid) return fail("Something's off with that place.");
+  const valid = checkInput(input);
+  if (!valid) return fail("Something's off with that place. Try finding it again.");
   const { riddenOn, ...data } = valid;
   await (await cols()).destinations.updateOne({ _id: id }, { $set: { ...data, updatedAt: new Date() } });
   if (data.status !== before.status && data.status === "planned") {
@@ -336,6 +251,8 @@ export async function refreshPhotos(slug: string, id: string): Promise<Result<{ 
   const ctx = await requireRider(slug);
   const row = await ownDestination(ctx, id);
   const photos = await photosNear(row);
+  // Keep what's there when Commons is down, rather than wiping it.
+  if (photos === null) return fail("Wikimedia Commons isn't answering. Try again in a bit.");
   await (await cols()).destinations.updateOne({ _id: id }, { $set: { photos } });
   refresh(slug);
   return { ok: true, count: photos.length };
@@ -483,11 +400,23 @@ export async function deleteStop(slug: string, stopId: string): Promise<Result> 
 
 // ---------- Profile ----------
 
-export async function updateProfile(slug: string, input: { emoji: string; color: string }): Promise<Result> {
+export async function updateProfile(slug: string, input: { name: string; emoji: string; color: string }): Promise<Result> {
   const ctx = await requireRider(slug);
+  const name = clean(input.name, 24);
+  if (name.length < 2) return fail("Name needs at least 2 letters.");
   if (!(AVATAR_EMOJIS as readonly string[]).includes(input.emoji)) return fail("Pick an avatar.");
   if (!(AVATAR_COLORS as readonly string[]).includes(input.color)) return fail("Pick a colour.");
-  await (await cols()).riders.updateOne({ _id: ctx.viewer.id }, { $set: { emoji: input.emoji, color: input.color } });
+  const nameKey = name.toLowerCase();
+  const taken = fail(`"${name}" is taken in this crew. Try another.`);
+  const c = await cols();
+  if (nameKey !== ctx.viewer.nameKey && (await c.riders.findOne({ groupId: ctx.group.id, nameKey }))) return taken;
+  try {
+    await c.riders.updateOne({ _id: ctx.viewer.id }, { $set: { name, nameKey, emoji: input.emoji, color: input.color } });
+  } catch (e) {
+    // Someone took the name between the check and the write: the unique index wins.
+    if ((e as { code?: number }).code === 11000) return taken;
+    throw e;
+  }
   refresh(slug);
   return { ok: true };
 }

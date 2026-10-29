@@ -33,6 +33,10 @@ Collections and indexes are created on first connect, so there is no migration s
 
 Open `http://localhost:3000/admin`, enter `ADMIN_SECRET`, create a crew and copy its link.
 
+`npm test` runs the unit tests for link parsing, routing helpers and ride validation.
+
+Outside Vercel the app refuses to open a remote database unless its name ends in `-dev`, so a local `next start` can't write to production by accident. Set `ALLOW_REMOTE_DB=1` to override.
+
 Other scripts: `npm run reset` drops the database (it refuses a non-local one unless you pass `-- --force`), and `npx tsx scripts/dev-session.mts <name>` prints a rider's session cookie for testing pages with curl.
 
 ## Deploy (Vercel + MongoDB Atlas, both free tiers)

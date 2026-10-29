@@ -44,6 +44,8 @@ export type FeedItem = Destination & {
   /** Riders who have ridden it, most recent first */
   riddenBy: { rider: RiderLite; date: string | null }[];
   iRode: boolean;
+  /** The rider who added it has been removed, so anyone in the crew can look after it */
+  ownerGone: boolean;
   commentCount: number;
   stopCount: number;
 };
@@ -82,6 +84,7 @@ async function hydrate(rows: Destination[], groupRiders: RiderLite[], viewerId: 
     return {
       ...d,
       owner: who(d.riderId),
+      ownerGone: !byId.has(d.riderId),
       reactions: myRx.map((r) => ({ emoji: r.emoji, rider: who(r.riderId) })),
       myReaction: myRx.find((r) => r.riderId === viewerId)?.emoji ?? null,
       interested: myIns.map((i) => who(i.riderId)),
@@ -100,6 +103,22 @@ export async function getFeed(ctx: GroupContext) {
     .sort({ createdAt: -1 })
     .toArray();
   return hydrate(rows.map((r) => fromDoc<Destination>(r)), ctx.riders, ctx.viewer?.id ?? null);
+}
+
+/** Rides added and ridden per rider, without loading every route. */
+export async function getRiderCounts(ctx: GroupContext) {
+  const c = await cols();
+  const live = await c.destinations.find({ groupId: ctx.group.id, deletedAt: null }, { projection: { riderId: 1 } }).toArray();
+  const ridden = await c.rides
+    .aggregate<{ _id: string; n: number }>([
+      { $match: { destinationId: { $in: live.map((d) => d._id) } } },
+      { $group: { _id: "$riderId", n: { $sum: 1 } } },
+    ])
+    .toArray();
+  const added = new Map<string, number>();
+  for (const d of live) added.set(d.riderId, (added.get(d.riderId) ?? 0) + 1);
+  const rode = new Map(ridden.map((r) => [r._id, r.n]));
+  return (riderId: string) => ({ added: added.get(riderId) ?? 0, ridden: rode.get(riderId) ?? 0 });
 }
 
 export async function getDestination(ctx: GroupContext, id: string) {

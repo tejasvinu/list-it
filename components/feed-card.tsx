@@ -135,9 +135,9 @@ export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: s
                 target="_blank"
                 rel="noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="absolute bottom-2 left-2 max-w-[60%] truncate rounded-[3px] bg-[var(--scrim)] px-1.5 py-0.5 text-[11px] text-white/85"
+                className="absolute bottom-2 left-2 flex min-h-6 max-w-[60%] items-center rounded-[3px] bg-[var(--scrim)] px-2 text-[12px] text-white/85"
               >
-                Photo: {p.credit ?? "Wikimedia Commons"}
+                <span className="truncate">Photo: {p.credit ?? "Wikimedia Commons"}</span>
               </a>
             </div>
           ))}
@@ -184,9 +184,13 @@ export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: s
         <RideFacts item={item} />
         {item.notes && (
           <p className="line-clamp-2 text-[16px] leading-snug">
-            <Link href={`/g/${slug}/r/${item.owner.id}`} className="font-semibold">
-              {item.owner.name}
-            </Link>{" "}
+            {item.ownerGone ? (
+              <span className="font-semibold">{item.owner.name}</span>
+            ) : (
+              <Link href={`/g/${slug}/r/${item.owner.id}`} className="font-semibold">
+                {item.owner.name}
+              </Link>
+            )}{" "}
             {item.notes}
           </p>
         )}
