@@ -6,8 +6,9 @@ import { sealRoute } from "@/lib/seal";
 
 export const metadata = { title: "Edit ride" };
 
-export default async function EditPage({ params }: PageProps<"/g/[slug]/d/[id]/edit">) {
+export default async function EditPage({ params, searchParams }: PageProps<"/g/[slug]/d/[id]/edit">) {
   const { slug, id } = await params;
+  const { from } = await searchParams;
   const ctx = await getGroupContext(slug);
   if (!ctx.viewer) return null;
   const d = await getDestination(ctx, id);
@@ -30,6 +31,7 @@ export default async function EditPage({ params }: PageProps<"/g/[slug]/d/[id]/e
     <DestinationForm
       slug={slug}
       editId={id}
+      backToRide={from === "ride"}
       initial={{
         name: d.name,
         preview: {

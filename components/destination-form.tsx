@@ -72,10 +72,13 @@ type Details = {
 export function DestinationForm({
   slug,
   editId,
+  backToRide = false,
   initial,
 }: {
   slug: string;
   editId?: string;
+  /** Opened from the ride page, so the ride is the previous history entry */
+  backToRide?: boolean;
   initial?: { preview: Preview; name: string; details: Details };
 }) {
   const router = useRouter();
@@ -116,6 +119,12 @@ export function DestinationForm({
     }
   };
 
+  /** Back to the ride without leaving the form in history, so Back from the ride doesn't reopen it. */
+  const leaveEdit = () => {
+    if (backToRide) router.back();
+    else router.replace(`/g/${slug}/d/${editId}`);
+  };
+
   const save = () => {
     if (!preview) return;
     setError(null);
@@ -142,7 +151,7 @@ export function DestinationForm({
           return toast(res.error);
         }
         toast("Changes saved");
-        router.push(`/g/${slug}/d/${editId}`);
+        leaveEdit();
       } else {
         const res = await createDestination(slug, input);
         if (!res.ok) {
@@ -150,7 +159,8 @@ export function DestinationForm({
           return toast(res.error);
         }
         toast("Posted to the crew");
-        router.push(`/g/${slug}/d/${res.id}`);
+        // Replace, so Back from the new ride doesn't land on a form that has already been posted.
+        router.replace(`/g/${slug}/d/${res.id}`);
       }
     });
   };
@@ -162,12 +172,12 @@ export function DestinationForm({
           <button onClick={() => setPreview(null)} className="grid h-11 w-11 place-items-center rounded-full hover:bg-surface-2" aria-label="Back">
             <ArrowLeft size={20} />
           </button>
+        ) : editId ? (
+          <button onClick={leaveEdit} className="grid h-11 w-11 place-items-center rounded-full hover:bg-surface-2" aria-label="Close">
+            <X size={22} />
+          </button>
         ) : (
-          <Link
-            href={editId ? `/g/${slug}/d/${editId}` : `/g/${slug}`}
-            className="grid h-11 w-11 place-items-center rounded-full hover:bg-surface-2"
-            aria-label="Close"
-          >
+          <Link href={`/g/${slug}`} className="grid h-11 w-11 place-items-center rounded-full hover:bg-surface-2" aria-label="Close">
             <X size={22} />
           </Link>
         )}

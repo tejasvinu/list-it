@@ -75,7 +75,7 @@ export function DestinationView({ d, slug, me }: { d: DestinationDetail; slug: s
           <div className="pointer-events-auto flex gap-2">
             {mine && (
               <Link
-                href={`/g/${slug}/d/${d.id}/edit`}
+                href={`/g/${slug}/d/${d.id}/edit?from=ride`}
                 className="float flex h-11 items-center gap-2 rounded-full bg-surface px-4 text-[15px] font-semibold text-text"
               >
                 <Pencil size={16} /> Edit ride

@@ -1,7 +1,10 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
+
+const noop = () => () => {};
 
 /** Bottom sheet with drag-to-dismiss on phones; a centred dialog on desktop. */
 export function Sheet({
@@ -15,6 +18,9 @@ export function Sheet({
   title?: string;
   children: React.ReactNode;
 }) {
+  // Portals need document.body, which only exists once we're in the browser.
+  const mounted = useSyncExternalStore(noop, () => true, () => false);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -22,7 +28,11 @@ export function Sheet({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  return (
+  if (!mounted) return null;
+
+  // Rendered at the end of <body> so a parent's stacking context (a z-index, a transform) can't put the
+  // bottom nav on top of the sheet and swallow taps on its buttons.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -57,6 +67,7 @@ export function Sheet({
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
