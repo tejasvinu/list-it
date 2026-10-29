@@ -85,7 +85,7 @@ export function RideFacts({ item, className = "" }: { item: Pick<FeedItem, "dura
   );
 }
 
-export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: string; me: RiderLite; priority?: boolean }) {
+export function FeedCard({ item, slug, me, priority, forecast }: { item: FeedItem; slug: string; me: RiderLite; priority?: boolean; forecast?: React.ReactNode }) {
   const router = useRouter();
   const href = `/g/${slug}/d/${item.id}`;
   const { state, set } = useReactions(slug, item.id, me, { mine: item.myReaction, list: item.reactions });
@@ -183,7 +183,7 @@ export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: s
       <div className="space-y-3 px-4 pt-3 lg:px-0">
         <RideFacts item={item} />
         {item.fromYou && <p className="num text-[14px] text-muted">from {item.fromYou.name} {item.fromYou.approx ? "about " : ""}{km(item.fromYou.distanceKm)}</p>}
-        {item.forecastDay && <p className="num text-[14px] text-muted">{prettyDate(item.forecastDay.date, { weekday: "short" })} · {Math.round(item.forecastDay.max)}° · {item.forecastDay.rainChance}% rain</p>}
+        {forecast}
         {item.notes && (
           <p className="line-clamp-2 text-[16px] leading-snug">
             {item.ownerGone ? (
@@ -254,7 +254,7 @@ export function FeedCard({ item, slug, me, priority }: { item: FeedItem; slug: s
 }
 
 /** One row for the compact list: the stone, the name and the numbers that matter. */
-export function CompactCard({ item, slug, me }: { item: FeedItem; slug: string; me: RiderLite }) {
+export function CompactCard({ item, slug, me, forecast }: { item: FeedItem; slug: string; me: RiderLite; forecast?: React.ReactNode }) {
   return (
     <Link
       href={`/g/${slug}/d/${item.id}`}
@@ -271,7 +271,7 @@ export function CompactCard({ item, slug, me }: { item: FeedItem; slug: string; 
           <CategoryLabel category={item.category} />
         </span>
         {item.fromYou && <span className="num block text-[14px] text-muted">from {item.fromYou.name} {item.fromYou.approx ? "about " : ""}{km(item.fromYou.distanceKm)}</span>}
-        {item.forecastDay && <span className="num block text-[14px] text-muted">{prettyDate(item.forecastDay.date, { weekday: "short" })} · {Math.round(item.forecastDay.max)}° · {item.forecastDay.rainChance}% rain</span>}
+        {forecast}
         <span className="mt-1.5 flex items-center gap-2">
           <StatusChip status={item.status} date={item.statusDate} ridden={item.riddenBy} meId={me.id} />
           {item.interested.length > 0 && <span className="text-[13px] text-faint">{item.interested.length} in</span>}

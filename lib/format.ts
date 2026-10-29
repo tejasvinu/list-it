@@ -84,3 +84,15 @@ export function googleMapsPlace(lat: number, lng: number) {
 export function googleMapsRoute(lat: number, lng: number) {
   return `https://www.google.com/maps/dir/?api=1&origin=Bengaluru&destination=${lat},${lng}&travelmode=driving`;
 }
+
+/** The current or coming Saturday and Sunday in India. */
+export function weekendDates(now: Date | number = Date.now()) {
+  const [year, month, day] = todayYmd(now).split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const weekday = date.getUTCDay();
+  const offset = weekday === 0 ? -1 : 6 - weekday;
+  date.setUTCDate(date.getUTCDate() + offset);
+  const saturday = date.toISOString().slice(0, 10);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return [saturday, date.toISOString().slice(0, 10)];
+}

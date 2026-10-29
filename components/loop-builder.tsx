@@ -171,6 +171,8 @@ export function LoopBuilder({
             <label className="mt-2 flex items-center gap-2 text-[15px]">
               <input
                 type="checkbox"
+                aria-label={`Night here at ${stop.name}`}
+                className="h-6 w-6"
                 checked={stop.nightHere}
                 onChange={(e) => setStops(stops.map((s, j) => (j === i ? { ...s, nightHere: e.target.checked } : s)))}
               />{" "}
@@ -241,6 +243,7 @@ export function LoopBuilder({
                 id="loop-preview"
                 route={routed.route}
                 category="multi"
+                start={start}
                 className="mt-3 h-48 w-full rounded-panel bg-surface"
               />
               <p className="num mt-3 font-semibold">

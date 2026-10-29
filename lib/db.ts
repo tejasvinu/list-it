@@ -121,7 +121,7 @@ export type Notification = {
   createdAt: Date; readAt: Date | null;
 };
 export type SuggestedStop = { id: string; kind: string; name: string; lat: number; lng: number; km: number };
-export type StopSuggestions = { destinationId: string; routeKey: string; stops: SuggestedStop[]; updatedAt: Date };
+export type StopSuggestions = { destinationId: string; routeKey: string; stops: SuggestedStop[]; failed?: boolean; updatedAt: Date };
 
 export type Upload = {
   id: string; groupId: string; destinationId: string; riderId: string;

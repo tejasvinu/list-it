@@ -5,7 +5,7 @@ import { cols, fromDoc, type Group, type Rider } from "@/lib/db";
 import { isAdmin, isLockedOut, registrationOpen } from "@/lib/auth";
 import { siteOrigin } from "@/lib/origin";
 import { Avatar } from "@/components/avatar";
-import { ConfirmButton, CopyLink, MessageForm } from "@/components/admin-forms";
+import { ConfirmButton, CopyLink, MessageForm, RefreshRoutes } from "@/components/admin-forms";
 import { addRider, removeRider, renameGroup, resetPin, setRegistration } from "../../actions";
 
 export const metadata = { title: "Admin · crew" };
@@ -23,6 +23,7 @@ export default async function AdminGroupPage({ params }: PageProps<"/admin/g/[id
     { $match: { groupId: id } },
     { $group: { _id: null, count: { $sum: 1 }, bytes: { $sum: { $add: [{ $binarySize: "$bytes" }, { $binarySize: "$thumb" }] } } } },
   ]).toArray();
+  const rides = await c.destinations.find({ groupId: id, deletedAt: null }, { projection: { _id: 1 } }).toArray();
   const url = `${await siteOrigin()}/g/${group.slug}`;
   const open = registrationOpen(group);
   const input = "field !py-2.5";
@@ -39,6 +40,11 @@ export default async function AdminGroupPage({ params }: PageProps<"/admin/g/[id
           <button className={quiet}>Rename</button>
         </form>
       </div>
+
+      <section className="space-y-2">
+        <h2 className="display text-[24px]">Routes</h2>
+        <RefreshRoutes groupId={id} ids={rides.map((ride) => ride._id)} />
+      </section>
 
       <section className="space-y-2">
         <h2 className="display text-[24px]">Rider photos</h2>

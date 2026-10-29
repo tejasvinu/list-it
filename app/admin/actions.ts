@@ -6,6 +6,7 @@ import { cols, toDoc, type Group, type Rider } from "@/lib/db";
 import { adminLoginAllowed, adminSecretMatches, endAdminSession, hashPin, isAdmin, isValidPin, startAdminSession } from "@/lib/auth";
 import { groupSlug, rid } from "@/lib/ids";
 import { logActivity } from "@/lib/data";
+import { refreshRoute } from "@/lib/reroute";
 import { AVATAR_COLORS, AVATAR_EMOJIS, REGISTRATION_DAYS } from "@/lib/config";
 
 async function guard() {
@@ -50,10 +51,12 @@ export async function renameGroup(groupId: string, form: FormData) {
 
 export async function setRegistration(groupId: string, open: boolean) {
   await guard();
-  await (await cols()).groups.updateOne(
-    { _id: groupId },
-    { $set: { registrationClosesAt: open ? days(REGISTRATION_DAYS) : new Date() } },
-  );
+  const c = await cols();
+  const group = await c.groups.findOne({ _id: groupId });
+  if (!group) return;
+  const start = Math.max(Date.now(), group.registrationClosesAt.getTime());
+  const closesAt = open ? new Date(start + REGISTRATION_DAYS * 86400000) : new Date();
+  await c.groups.updateOne({ _id: groupId }, { $set: { registrationClosesAt: closesAt } });
   revalidatePath("/admin", "layout");
 }
 
@@ -115,4 +118,17 @@ export async function removeRider(riderId: string) {
   await guard();
   await (await cols()).riders.updateOne({ _id: riderId }, { $set: { removedAt: new Date() }, $inc: { sessionVersion: 1 } });
   revalidatePath("/admin", "layout");
+}
+
+export async function refreshRoutes(groupId: string, ids: string[]) {
+  await guard();
+  if (typeof groupId !== "string" || groupId.length > 100 || !Array.isArray(ids) || ids.length > 3 || ids.some((id) => typeof id !== "string" || id.length > 100)) {
+    return { ok: false as const, error: "Invalid rides." };
+  }
+  const c = await cols();
+  if (!(await c.groups.findOne({ _id: groupId }))) return { ok: false as const, error: "Crew not found." };
+  const rows = await c.destinations.find({ _id: { $in: ids }, groupId, deletedAt: null }).toArray();
+  const results = await Promise.all(rows.map(refreshRoute));
+  revalidatePath("/admin", "layout");
+  return { ok: true as const, updated: results.filter(Boolean).length, attempted: ids.length };
 }

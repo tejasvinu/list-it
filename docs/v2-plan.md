@@ -100,7 +100,7 @@ Written 29 October 2026. This is the brief for v2: every README roadmap item tha
 - A night at the last stop still leaves a final day for the ride home. Days over either limit are warnings only. OSRM failures use a 1.3-times straight-line estimate per leg at 50 km/h, marked as approximate.
 - OSRM previews are cached for an hour; saved routes live on the loop. Loop comments and attendance use separate collections, and loop activity points to the loop. Concurrent edits are rejected if the saved loop changes while it is being routed.
 
-- Stop suggestions use interpolated two-kilometre samples from the saved round-trip polyline; overlapping outbound and return sections use the first matching sample. Unnamed viewpoints and photo spots receive a generic label. Cached suggestions are invalidated when the route or pin changes.
+- Stop suggestions use the outbound leg, sampled at no less than five-kilometre intervals and capped at 40 points; longer rides use wider spacing. Failures are cached for ten minutes. Unnamed viewpoints and photo spots receive a generic label. Cached suggestions are invalidated when the route or pin changes.
 - Notifications are kept per recipient and exclude removed riders and the actor. Commenters on the same ride or loop receive thread updates; one event is sent once per recipient. A weekly digest includes plans made or changed in the past seven days, and stops at complete entries under 1,500 characters.
 - Calendar events are all-day, with an exclusive end date; a loop spans its computed number of riding days. WhatsApp sharing is the fallback for ride and loop shares, while existing feed shares retain their clipboard fallback.
 
@@ -132,3 +132,12 @@ Written 29 October 2026. This is the brief for v2: every README roadmap item tha
 
 - Added browser resizing, MongoDB storage with concurrency-safe limits, authenticated serving, swipe/keyboard gallery, ride-log photos, deletion permissions and admin storage usage. Deleting a ride removes its uploads.
 - Checked server-render paths and authorization in code, and added tests for image validation and quota slots. `npm run typecheck`, `npm run lint` and `npm run build` passed. `npm test` hit the Windows `os.userInfo()` ENOMEM error before tests started; the direct `tsx` command with a temporary-directory preload passed all 34 tests. Browser checks were skipped as directed; the orchestrator will run them. No live database upload was exercised.
+
+
+### Phase 5 — iteration and audit
+
+- Added feed search, nearest-from-you sorting and the current or coming IST weekend view. Forecasts and personal routes stream independently; feed forecasts use the same cache and stream without delaying the cards. Ride detail queries run in parallel.
+- Added an admin route refresh with progress and a guarded `npm run reroute` script. OSRM failures and rides changed during routing keep their previous values. Hairpins are rider-entered in this app, so refresh preserves them rather than inventing a count.
+- Reduced the stop-finder query to the outbound route with three mirrors and a 40-second budget. Added loop titles, real start labels, checkbox names, photo descriptions, keyboard comment sending and the loop attendance treatment. Fixed the joining-window Extend action, which previously reset the end to three days from now instead of adding three days.
+- Reviewed status, location editing, deletion, map, activity, crew, profile, admin actions and joining in code. Checked indexed feed queries and existing focus/reduced-motion handling. `npm run typecheck`, `npm run lint` and `npm run build` passed; `npm test` hit the known Windows `os.userInfo()` error, and all 36 tests passed using the direct command with a temp-directory preload. Production `next start` and curl returned 200 and the configured security headers for `/` and `/admin`; the admin response was private and no-store.
+- Browser checks at 390 and 1440 px, live route refresh, stop-finder calls, and the concurrent PIN load test remain for the orchestrator; no browser or production database was used.

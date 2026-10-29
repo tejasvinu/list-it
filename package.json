@@ -10,7 +10,8 @@
     "seed": "tsx --conditions=react-server scripts/seed.mts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --conditions=react-server --test \"lib/**/*.test.ts\"",
-    "reset": "tsx scripts/reset.mts"
+    "reset": "tsx scripts/reset.mts",
+    "reroute": "tsx --conditions=react-server scripts/reroute.mts"
   },
   "dependencies": {
     "@vercel/functions": "^3.10.4",

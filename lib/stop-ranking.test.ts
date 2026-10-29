@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sampleRoute, rankStops } from "./stop-ranking";
+import { sampleRoute, rankStops, buildStopQuery } from "./stop-ranking";
 
 test("samples simplified segments at roughly two kilometre intervals", () => {
   const samples = sampleRoute([
@@ -27,4 +27,16 @@ test("deduplicates and spreads results while keeping an outbound breakfast", () 
   assert.ok(result.some((stop) => stop.km > 250));
   const duplicates = rankStops([stops[4], { ...stops[4], id: "duplicate" }], 150);
   assert.equal(duplicates.length, 1);
+});
+
+
+test("stop query samples only the outbound route and caps long routes", () => {
+  const route: [number, number][] = [[12, 77], [15, 77], [12, 77]];
+  const { query, samples } = buildStopQuery(route, { lat: 15, lng: 77 });
+  assert.ok(samples.length <= 40);
+  assert.ok(samples.at(-1)!.lat <= 15);
+  assert.ok(samples[1].km >= 5);
+  assert.match(query, /\[timeout:20\]/);
+  assert.match(query, /out body qt;/);
+  assert.equal(buildStopQuery([], { lat: 15, lng: 77 }).query, "");
 });

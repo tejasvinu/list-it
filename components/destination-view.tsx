@@ -43,8 +43,7 @@ import { InButton, ReactionButton, ReactionSummary, useReactions } from "./socia
 import { AddToLoop } from "./add-to-loop";
 import { RideLog } from "./ride-log";
 import { RiderPhotos } from "./rider-photos";
-import { WeatherBlock } from "./weather-block";
-import type { WeatherDay } from "@/lib/weather-types";
+
 import { attempt, shareLink, toast } from "./toast";
 
 const RouteMap = dynamic(() => import("./maps").then((m) => m.RouteMap), {
@@ -52,7 +51,7 @@ const RouteMap = dynamic(() => import("./maps").then((m) => m.RouteMap), {
   loading: () => <div className="skeleton h-full w-full" />,
 });
 
-export function DestinationView({ d, slug, me, riders, weather, loops }: { d: DestinationDetail; slug: string; me: RiderLite; riders: RiderLite[]; weather: WeatherDay[] | null; loops: { id: string; name: string }[] }) {
+export function DestinationView({ d, slug, me, riders, originSlot, weatherSlot, loops }: { d: DestinationDetail; slug: string; me: RiderLite; riders: RiderLite[]; originSlot: React.ReactNode; weatherSlot: React.ReactNode; loops: { id: string; name: string }[] }) {
   const router = useRouter();
   // Rides from removed riders can be looked after by anyone, or nobody could ever change them.
   const mine = d.owner.id === me.id || d.ownerGone;
@@ -69,7 +68,7 @@ export function DestinationView({ d, slug, me, riders, weather, loops }: { d: De
 
   return (
     <div className="pb-10 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,600px)] lg:pb-0">
-      <div className="relative h-[34dvh] min-h-[240px] bg-surface-2 lg:sticky lg:top-0 lg:h-dvh">
+      <div className="relative h-[25dvh] min-h-[160px] bg-surface-2 lg:sticky lg:top-0 lg:h-dvh">
         <RouteMap route={d.route} category={d.category} dest={d} stops={[...d.stops, ...suggestions.filter((suggestion) => !d.stops.some((stop) => stop.kind === suggestion.kind && stop.lat === suggestion.lat && stop.lng === suggestion.lng))]} className="h-full w-full" />
         <div className="pointer-events-none absolute inset-x-0 top-0 z-[500] flex justify-between p-3 pt-[max(env(safe-area-inset-top),12px)]">
           <button
@@ -119,15 +118,15 @@ export function DestinationView({ d, slug, me, riders, weather, loops }: { d: De
           <Milestone name={d.name} distanceKm={d.distanceKm} split={d.roadSplit} approx={d.approx} size={17} className="settle -mt-14 lg:mt-0" />
         </div>
 
-        <dl className="num mt-6 grid grid-cols-2 gap-x-6 gap-y-5">
+        <dl className="num mt-4 grid grid-cols-2 gap-x-6 gap-y-2">
           <Fact label="Round trip" value={km(d.distanceKm)} sub={d.approx ? "Rough estimate" : "Bengaluru and back"} />
           <Fact label="Riding time" value={duration(d.durationMin)} sub={`About ${duration(d.durationMin / 2)} each way`} />
           <Fact label="Hairpins" value={d.hairpins ? String(d.hairpins) : "Not counted"} muted={!d.hairpins} />
           <Fact label="Ride type" value={cat.short} sub={cat.hint} dot={cat.color} />
         </dl>
 
-        {d.fromYou && <p className="num mt-4 text-[15px] text-muted">From {d.fromYou.name}: {d.fromYou.approx ? "about " : ""}{km(d.fromYou.distanceKm)} round trip, {duration(d.fromYou.durationMin)}</p>}
-        <div className="mt-7 flex flex-wrap items-center gap-3">
+        {originSlot}
+        <div className="mt-4 flex flex-wrap items-center gap-3">
           <InButton slug={slug} id={d.id} me={me} imIn={d.imIn} interested={d.interested} />
           <AddToLoop slug={slug} rideId={d.id} loops={loops} />
           {d.status === "planned" && d.statusDate && <a href={`/g/${slug}/calendar/ride/${d.id}`} className="btn btn-line">Add to calendar</a>}
@@ -170,7 +169,7 @@ export function DestinationView({ d, slug, me, riders, weather, loops }: { d: De
           </a>
         </div>
 
-        <WeatherBlock d={d} weather={weather} />
+        {weatherSlot}
 
         {(d.roadSplit || d.tags.length > 0 || d.seasons.length > 0) && (
           <section className="mt-10">
@@ -209,7 +208,7 @@ export function DestinationView({ d, slug, me, riders, weather, loops }: { d: De
 
         <section className="mt-10">
           <SectionTitle>Photos</SectionTitle>
-          <RiderPhotos photos={d.uploads} commons={d.photos} slug={slug} destinationId={d.id} ownerId={d.owner.id} meId={me.id} allowUpload />
+          <RiderPhotos photos={d.uploads} commons={d.photos} slug={slug} destinationId={d.id} destinationName={d.name} ownerId={d.owner.id} meId={me.id} allowUpload />
         </section>
 
         <Stops d={d} slug={slug} me={me} suggestions={suggestions} setSuggestions={setSuggestions} />
@@ -610,7 +609,7 @@ function Comments({ d, slug, me }: { d: DestinationDetail; slug: string; me: Rid
             value={body}
             onChange={(e) => setBody(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !("ontouchstart" in window)) {
+              if (e.key === "Enter" && !e.shiftKey && window.matchMedia("(pointer: fine)").matches && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 send();
               }

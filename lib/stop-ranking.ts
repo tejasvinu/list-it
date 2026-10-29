@@ -71,3 +71,31 @@ export function rankStops(stops: SuggestedStop[], outboundKm: number): Suggested
   }
   return result;
 }
+
+/** Build a bounded query for the outbound leg only. */
+export function buildStopQuery(route: Point[], destination: { lat: number; lng: number }) {
+  if (!route.length) return { query: "", samples: [] as RouteSample[] };
+  let end = 0;
+  let closest = Infinity;
+  route.forEach((point, index) => {
+    const dist = distance(point, [destination.lat, destination.lng]);
+    if (dist < closest) {
+      closest = dist;
+      end = index;
+    }
+  });
+  const outbound = route.slice(0, end + 1);
+  const length = outbound.reduce((sum, point, i) => i ? sum + distance(outbound[i - 1], point) : 0, 0);
+  const samples = sampleRoute(outbound, Math.max(5, length / 39 + 0.001));
+  const around = samples.map((s) => `${s.lat.toFixed(5)},${s.lng.toFixed(5)}`).join(",");
+  const query = [
+    "[out:json][timeout:20];",
+    `node(around:400,${around})->.near;`,
+    "(node.near[\"name\"][\"amenity\"~\"^(restaurant|cafe|fast_food|fuel)$\"];",
+    "node.near[\"tourism\"~\"^(viewpoint|attraction)$\"];",
+    "node.near[\"natural\"=\"peak\"];",
+    "node.near[\"waterway\"=\"waterfall\"];",
+    "node.near[\"historic\"];);out body qt;",
+  ].join("");
+  return { query, samples };
+}

@@ -10,6 +10,7 @@ type Props = {
   animate?: boolean;
   /** Name home on the drawing. Defaults to on without map tiles, off with them. */
   labels?: boolean;
+  start?: { name: string; lat: number; lng: number };
   /** Fraction of the height kept clear at the bottom, e.g. for a title overlay */
   bottomRoom?: number;
   /** Draw grey OpenStreetMap tiles under the route instead of a plain ground */
@@ -27,7 +28,7 @@ const mercator = (lat: number, lng: number) => {
  * The route drawn as a road on a map: Bengaluru out to the destination and back,
  * on a plain ground, or with `map`, over grey tiles (day or night, from the theme).
  */
-export function RouteArt({ id, route, category, width = 400, height = 300, animate = true, labels, bottomRoom = 0, map = false, className }: Props) {
+export function RouteArt({ id, route, category, width = 400, height = 300, animate = true, labels, start = HOME, bottomRoom = 0, map = false, className }: Props) {
   // Map tiles already name the city, so only the plain drawing labels home by default.
   labels ??= !map;
   const color = categoryOf(category).color;
@@ -80,13 +81,13 @@ export function RouteArt({ id, route, category, width = 400, height = 300, anima
   let far = pts[0];
   let farD = -1;
   for (const p of pts) {
-    const dd = (p[0] - HOME.lat) ** 2 + (p[1] - HOME.lng) ** 2;
+    const dd = (p[0] - start.lat) ** 2 + (p[1] - start.lng) ** 2;
     if (dd > farD) {
       farD = dd;
       far = p;
     }
   }
-  const [hx, hy] = project(HOME.lat, HOME.lng);
+  const [hx, hy] = project(start.lat, start.lng);
   const [dx, dy] = project(far[0], far[1]);
   const gid = `rg-${id}`;
   const stroke = Math.max(2.5, Math.min(width, height) / 110);
@@ -154,7 +155,7 @@ export function RouteArt({ id, route, category, width = 400, height = 300, anima
           fontSize="13"
           fontWeight="700"
         >
-          {HOME.name}
+          {start.name}
         </text>
       )}
     </svg>

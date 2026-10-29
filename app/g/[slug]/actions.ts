@@ -513,7 +513,7 @@ export async function loadSuggestions(
   );
   if (!row) return fail("Ride not found.");
   const stops = await suggestStops(row);
-  if (!stops) return fail("Suggestions are unavailable. Try again later.");
+  if (!stops) return fail("OpenStreetMap's stop finder is busy. Try again in a few minutes.");
   return { ok: true, stops };
 }
 

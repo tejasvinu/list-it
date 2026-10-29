@@ -55,11 +55,12 @@ async function resizePhoto(file: File) {
   }
 }
 
-export function RiderPhotos({ photos, commons = [], slug, destinationId, ownerId, meId, allowUpload = false, compact = false }: {
+export function RiderPhotos({ photos, commons = [], slug, destinationId, destinationName, ownerId, meId, allowUpload = false, compact = false }: {
   photos: Upload[];
   commons?: Photo[];
   slug: string;
   destinationId: string;
+  destinationName: string;
   ownerId: string;
   meId: string;
   allowUpload?: boolean;
@@ -126,7 +127,7 @@ export function RiderPhotos({ photos, commons = [], slug, destinationId, ownerId
       >
         <span className={`block overflow-hidden rounded-panel bg-surface-2 ${compact ? "h-20" : "h-[180px]"}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`/g/${slug}/photo/${photo.id}?thumb=1`} alt="" loading="lazy" className="h-full w-full object-cover" />
+          <img src={`/g/${slug}/photo/${photo.id}?thumb=1`} alt={`Photo of ${destinationName} by ${photo.rider.name}, ${new Date(photo.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" })}`} loading="lazy" className="h-full w-full object-cover" />
         </span>
         {!compact && <span className="mt-1.5 block truncate text-[12px] text-faint">
           {photo.rider.name}, {new Date(photo.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" })}
@@ -181,7 +182,7 @@ export function RiderPhotos({ photos, commons = [], slug, destinationId, ownerId
           <ChevronLeft />
         </button>}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={`/g/${slug}/photo/${selectedPhoto.id}`} alt={`Photo by ${selectedPhoto.rider.name}`} className="max-h-full min-w-0 max-w-full object-contain" />
+        <img src={`/g/${slug}/photo/${selectedPhoto.id}`} alt={`Photo of ${destinationName} by ${selectedPhoto.rider.name}, ${new Date(selectedPhoto.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" })}`} className="max-h-full min-w-0 max-w-full object-contain" />
         {photos.length > 1 && <button className="grid h-11 w-11 shrink-0 place-items-center" aria-label="Next photo" onClick={() => setSelected((selected + 1) % photos.length)}>
           <ChevronRight />
         </button>}

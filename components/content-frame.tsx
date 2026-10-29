@@ -10,7 +10,9 @@ export function ContentFrame({ slug, children }: { slug: string; children: React
   const path = usePathname();
   const base = `/g/${slug}`;
   const flow = path.startsWith(`${base}/new`) || path.endsWith("/edit");
-  const wide = path.startsWith(`${base}/map`) || (/\/d\/[^/]+$/.test(path) && !path.startsWith(`${base}/new`));
+  const wide =
+    path.startsWith(`${base}/map`) ||
+    (/\/(d|loops)\/[^/]+$/.test(path) && !path.startsWith(`${base}/new`) && !path.endsWith("/loops/new"));
   // The ride list itself takes two columns of cards on desktop.
   const list = path === base;
   return (

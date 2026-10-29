@@ -10,7 +10,7 @@ import { CompactCard, FeedCard } from "./feed-card";
 import { Milestone } from "./milestone";
 import { shareLink } from "./toast";
 import { CATEGORIES } from "@/lib/config";
-import { daysUntil, prettyDate } from "@/lib/format";
+import { daysUntil, prettyDate, weekendDates } from "@/lib/format";
 import type { FeedItem } from "@/lib/data";
 import type { RiderLite } from "@/lib/types";
 
@@ -22,12 +22,12 @@ const LENGTHS = [
   { key: "multi", label: "Multi-day", dot: CATEGORIES.multi.color },
 ] as const;
 type LengthKey = (typeof LENGTHS)[number]["key"];
-type Only = "none" | "done" | "hailmary";
+type Only = "none" | "done" | "hailmary" | "weekend";
 
 const SORTS = [
   { key: "fresh", label: "Newest" },
   { key: "hot", label: "Most talked about" },
-  { key: "near", label: "Closest first" },
+  { key: "near", label: "Nearest from you" },
 ] as const;
 type SortKey = (typeof SORTS)[number]["key"];
 
@@ -37,6 +37,7 @@ export function FeedView({
   slug,
   groupName,
   items,
+  forecasts,
   riders,
   me,
   inviteOpen,
@@ -45,6 +46,7 @@ export function FeedView({
   slug: string;
   groupName: string;
   items: FeedItem[];
+  forecasts: Record<string, React.ReactNode>;
   riders: RiderLite[];
   me: RiderLite;
   inviteOpen: boolean;
@@ -54,6 +56,7 @@ export function FeedView({
   const [only, setOnly] = useState<Only>("none");
   const [sort, setSort] = useState<SortKey>("fresh");
   const [now] = useState(() => Date.now());
+  const [query, setQuery] = useState("");
   const [compact, setCompact] = useState(false);
   useEffect(() => {
     try {
@@ -78,20 +81,22 @@ export function FeedView({
 
   const shown = useMemo(() => {
     let xs = items.filter((d) => {
+      if (!`${d.name} ${d.area ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())) return false;
       if (length !== "all" && d.category !== length) return false;
+      if (only === "weekend") return d.status === "planned" && !!d.statusDate && weekendDates(now).includes(d.statusDate);
       if (only === "done") return d.riddenBy.length > 0;
       if (only === "hailmary") return d.status === "hailmary";
       return true;
     });
     if (sort === "hot") xs = [...xs].sort((a, b) => heat(b) - heat(a));
-    if (sort === "near") xs = [...xs].sort((a, b) => a.distanceKm - b.distanceKm);
+    if (sort === "near") xs = [...xs].sort((a, b) => (a.fromYou?.distanceKm ?? Infinity) - (b.fromYou?.distanceKm ?? Infinity));
     return xs;
-  }, [items, length, only, sort]);
+  }, [items, length, only, sort, query, now]);
 
   const ridden = items.filter((d) => d.riddenBy.length > 0);
   const toGoKm = items.filter((d) => !d.riddenBy.length).reduce((s, d) => s + d.distanceKm, 0);
   const hoursLeft = Math.max(0, Math.round((closesAt - now) / 3600000));
-  const filtered = length !== "all" || only !== "none";
+  const filtered = length !== "all" || only !== "none" || !!query.trim();
 
   return (
     <div>
@@ -166,6 +171,7 @@ export function FeedView({
       )}
 
       <section aria-label="Filter rides" className="mt-8 space-y-3">
+        <div className="px-4 lg:px-0"><input type="search" aria-label="Search rides by name or area" placeholder="Search rides or areas" value={query} onChange={(e) => setQuery(e.target.value)} className="field" /></div>
         <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 lg:px-0">
           {LENGTHS.map((f) => (
             <button key={f.key} aria-pressed={length === f.key} onClick={() => setLength(f.key)} className="chip shrink-0">
@@ -178,6 +184,7 @@ export function FeedView({
             [
               ["done", "Ridden"],
               ["hailmary", "Hail Mary"],
+              ["weekend", "This weekend"],
             ] as const
           ).map(([k, label]) => (
             <button key={k} aria-pressed={only === k} onClick={() => setOnly(only === k ? "none" : k)} className="chip shrink-0">
@@ -196,7 +203,7 @@ export function FeedView({
               aria-label="Sort rides"
               className="min-h-9 rounded-full bg-transparent px-2 text-muted outline-none hover:text-text"
             >
-              {SORTS.map((s) => (
+              {SORTS.filter((s) => s.key !== "near" || items.some((item) => item.fromYou)).map((s) => (
                 <option key={s.key} value={s.key}>
                   {s.label}
                 </option>
@@ -234,7 +241,7 @@ export function FeedView({
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ type: "spring", stiffness: 400, damping: 36 }}
             >
-              {compact ? <CompactCard item={item} slug={slug} me={me} /> : <FeedCard item={item} slug={slug} me={me} priority={i < 2} />}
+              {compact ? <CompactCard item={item} slug={slug} me={me} forecast={forecasts[item.id]} /> : <FeedCard item={item} slug={slug} me={me} priority={i < 2} forecast={forecasts[item.id]} />}
             </motion.div>
           ))}
         </AnimatePresence>
@@ -245,7 +252,7 @@ export function FeedView({
           <p className="display text-[30px]">{items.length ? "No rides match" : "The list is empty"}</p>
           <p className="mt-2 max-w-[38ch] text-[16px] text-muted">
             {items.length
-              ? "Try another ride length, or turn off Ridden and Hail Mary."
+              ? "Try another search or filter."
               : "Paste a Google Maps link and the round trip from Bengaluru is worked out for you."}
           </p>
           {items.length ? (
@@ -254,6 +261,7 @@ export function FeedView({
               onClick={() => {
                 setLength("all");
                 setOnly("none");
+                setQuery("");
               }}
             >
               Show all rides

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cols } from "@/lib/db";
@@ -6,6 +7,7 @@ import { categoryOf, duration, km } from "@/lib/format";
 import { originRoute } from "@/lib/origin-routes";
 import { forecast } from "@/lib/weather";
 import { getLoops } from "@/lib/loop-data";
+import { WeatherBlock } from "@/components/weather-block";
 import { DestinationView } from "@/components/destination-view";
 
 export async function generateMetadata({ params }: PageProps<"/g/[slug]/d/[id]">): Promise<Metadata> {
@@ -24,8 +26,29 @@ export default async function DestinationPage({ params }: PageProps<"/g/[slug]/d
   const { slug, id } = await params;
   const ctx = await getGroupContext(slug);
   if (!ctx.viewer) return null;
-  const d = await getDestination(ctx, id);
+  const [d, loops] = await Promise.all([getDestination(ctx, id), getLoops(ctx)]);
   if (!d) notFound();
-  const [origin, weather, loops] = await Promise.all([ctx.viewer.start ? originRoute(d, ctx.viewer.start) : null, forecast(d), getLoops(ctx)]);
-  return <DestinationView d={{ ...d, fromYou: origin && ctx.viewer.start ? { name: ctx.viewer.start.name, distanceKm: origin.distanceKm, durationMin: origin.durationMin, approx: origin.approx } : null }} slug={slug} me={lite(ctx.viewer)} riders={ctx.riders} weather={weather} loops={loops.filter((loop) => loop.riderId === ctx.viewer!.id).map(({ id, name }) => ({ id, name }))} />;
+  const origin = ctx.viewer.start ? originRoute(d, ctx.viewer.start).catch(() => null) : Promise.resolve(null);
+  const weather = forecast(d).catch(() => null);
+  return (
+    <DestinationView
+      d={d}
+      slug={slug}
+      me={lite(ctx.viewer)}
+      riders={ctx.riders}
+      originSlot={<Suspense fallback={null}><OriginFact origin={origin} name={ctx.viewer.start?.name} /></Suspense>}
+      weatherSlot={<Suspense fallback={<p className="mt-6 text-muted">Loading forecast…</p>}><Forecast d={d} weather={weather} /></Suspense>}
+      loops={loops.filter((loop) => loop.riderId === ctx.viewer!.id).map(({ id, name }) => ({ id, name }))}
+    />
+  );
+}
+
+async function OriginFact({ origin, name }: { origin: Promise<Awaited<ReturnType<typeof originRoute>> | null>; name?: string }) {
+  const route = await origin;
+  if (!route || !name) return null;
+  return <p className="num mt-2 text-[15px] text-muted">From {name}: {route.approx ? "about " : ""}{km(route.distanceKm)} round trip, {duration(route.durationMin)}</p>;
+}
+
+async function Forecast({ d, weather }: { d: NonNullable<Awaited<ReturnType<typeof getDestination>>>; weather: ReturnType<typeof forecast> }) {
+  return <WeatherBlock d={d} weather={await weather} />;
 }

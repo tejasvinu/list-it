@@ -6,8 +6,6 @@ import { cols, fromDoc, toDoc, type Activity, type Comment, type Destination, ty
 import { getGroupBySlug, getViewer, registrationOpen } from "./auth";
 import { rid } from "./ids";
 import type { RiderLite } from "./types";
-import { forecast } from "./weather";
-import { daysUntil } from "./format";
 import { originKey } from "./origin-routes";
 import { HOME } from "./config";
 import type { WeatherDay } from "./weather-types";
@@ -115,7 +113,6 @@ export async function getFeed(ctx: GroupContext) {
     .find({ groupId: ctx.group.id, deletedAt: null })
     .sort({ createdAt: -1 })
     .toArray();
-  await Promise.all(rows.filter(d => d.status === "planned" && d.statusDate && daysUntil(d.statusDate) >= 0 && daysUntil(d.statusDate) < 16).map(d => forecast(d)));
   return hydrate(rows.map((r) => fromDoc<Destination>(r)), ctx.riders, ctx.viewer?.id ?? null);
 }
 
@@ -139,10 +136,11 @@ export async function getDestination(ctx: GroupContext, id: string) {
   const c = await cols();
   const row = await c.destinations.findOne({ _id: id, groupId: ctx.group.id, deletedAt: null });
   if (!row) return null;
-  const [item] = await hydrate([fromDoc<Destination>(row)], ctx.riders, ctx.viewer?.id ?? null);
+  const itemPromise = hydrate([fromDoc<Destination>(row)], ctx.riders, ctx.viewer?.id ?? null);
   const byId = new Map(ctx.riders.map((r) => [r.id, r]));
 
-  const [thread, stopRows, uploadRows] = await Promise.all([
+  const [[item], thread, stopRows, uploadRows] = await Promise.all([
+    itemPromise,
     c.comments.find({ destinationId: id, deletedAt: null }).sort({ createdAt: 1 }).toArray(),
     c.stops.find({ destinationId: id }).sort({ createdAt: 1 }).toArray(),
     c.uploads.find({ groupId: ctx.group.id, destinationId: id }, {

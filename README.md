@@ -1,6 +1,6 @@
 # list-it
 
-A private, phone-first ride list for riding crews. Paste a Google Maps link and it works out the round trip from Bengaluru, the road mix, nearby photos and a route preview. Then the crew reacts, comments, says "I'm in" and adds stops along the way.
+A private, phone-first ride list for riding crews. Paste a Google Maps link to see the round trip, road mix, photos and route. Plan rides and multi-day loops with your crew, add stops, and keep a ride log.
 
 No accounts. Each crew lives at a secret link. Anyone with the link can join with a name and a 4-digit PIN for **3 days**, then joining closes. After that the admin adds people and resets PINs from `/admin`.
 
@@ -13,8 +13,14 @@ No accounts. Each crew lives at a secret link. Anyone with the link can join wit
 | PIN safety | Hashed with scrypt. 5 wrong tries lock that rider for 10 minutes, and each lock in a row lasts longer (1 h, 6 h, then a day) until they get it right or the admin resets the PIN. A PIN reset signs out every device. |
 | Ownership | Only the rider who added a ride can edit it, change its status or delete it. Everyone can react, comment, say "I'm in" and add stops. |
 | Location | Short and long Google Maps links, whole WhatsApp messages containing one, plus codes (`26X6+737 …`), or plain `lat, lng`. Falls back to OpenStreetMap search. If the pin lands wrong, drag it on the preview map. |
-| Distance | Bengaluru (city centre) → destination → Bengaluru, using the public OSRM router. The road mix (city / NH / SH / country roads) comes from the same route. |
-| Photos | Free, openly licensed photos taken near the place, from Wikimedia Commons, credited on each photo. |
+| Distance | Bengaluru → destination → Bengaluru using OSRM, with road mix. Set your own start area for a personal round trip. |
+| Loops | Chain rides or other places, split the trip into days, and see the route and overnight forecasts. |
+| Planning | Search rides, see this weekend, share, add planned rides or loops to a calendar, and say "I'm in". |
+| Stops | Add stops yourself or request OpenStreetMap suggestions along the outbound route. |
+| Ride log | Record who rode, when, and personal notes; see each rider's history. |
+| Weather | Forecasts from Open-Meteo and seasonal hints, including monsoon warnings for ghat roads. |
+| Activity | In-app notifications and a WhatsApp summary you choose to send. |
+| Photos | Rider uploads stored in MongoDB (up to 6 per rider per ride and 400 per crew), plus credited Wikimedia Commons photos. |
 | Link previews | Every ride has its own WhatsApp preview image: route, distance, hairpins, photo. |
 
 Stack: Next.js 16 (App Router, server actions), MongoDB, Tailwind 4, Motion, Leaflet with OpenStreetMap tiles. Nothing here needs a paid API key.
@@ -33,11 +39,11 @@ Collections and indexes are created on first connect, so there is no migration s
 
 Open `http://localhost:3000/admin`, enter `ADMIN_SECRET`, create a crew and copy its link.
 
-`npm test` runs the unit tests for link parsing, routing helpers and ride validation.
+`npm test` runs the unit tests for parsing, routing, dates, photos and validation.
 
 Outside Vercel the app refuses to open a remote database unless its name ends in `-dev`, so a local `next start` can't write to production by accident. Set `ALLOW_REMOTE_DB=1` to override.
 
-Other scripts: `npm run reset` drops the database (a non-local one needs `-- --force`, and only if its name ends in `-dev`), and `npx tsx scripts/dev-session.mts <name>` prints a rider's session cookie for testing pages with curl.
+Other scripts: `npm run reroute` refreshes saved routes in batches, preserving manually entered hairpins and leaving existing routes intact when OSRM fails. It only accepts a `-dev` database unless both `-- --force` and `ALLOW_REMOTE_DB=1` are supplied. The crew admin page also has a Refresh routes button. `npm run reset` drops the database (a non-local one needs `-- --force`, and only if its name ends in `-dev`), and `npx tsx scripts/dev-session.mts <name>` prints a rider's session cookie for testing pages with curl.
 
 ## Deploy (Vercel + MongoDB Atlas, both free tiers)
 
@@ -47,14 +53,14 @@ Other scripts: `npm run reset` drops the database (a non-local one needs `-- --f
 
 The 3-day joining window starts when the crew is created in `/admin`. "Extend 3 days", "Reopen 3 days" and "Close now" are on the crew's admin page.
 
+## What's new in v2
+
+Set a personal start area, build multi-day loops, log rides and rider photos, see forecasts, find suggested stops, and follow crew activity through in-app notifications. Share a weekly WhatsApp digest or add planned trips to your calendar. The feed can search by place, show this weekend and sort by cached distances from your area.
+
 ## Roadmap
 
-From the group chat, not built yet:
-
-- **Loops and circuits.** Chain destinations into multi-day routes (e.g. Yercaud → Mettur → home) with day splits, overnight stops and total distance.
-- **Distance from your own area.** Show distance from each rider's starting point (Whitefield, Yelahanka, Hebbal…) as well as the city-centre number.
-- **Rider photos.** Upload your own ride photos to a ride (needs blob storage, e.g. Vercel Blob).
-- **Smarter stops.** Suggest breakfast places and viewpoints along the actual route instead of only manual adds.
-- **Ride log details.** Who actually showed up, the date, and per-rider notes on each ridden trip.
-- **Notifications.** A daily digest or web push when someone plans a ride or says "I'm in" to yours.
-- **Weather and season hints.** Forecast for planned dates, and a monsoon warning on ghat roads.
+- Web push and an email digest, which need additional services or keys.
+- Blob photo storage if a crew outgrows the MongoDB photo limits.
+- A self-hosted or paid Overpass instance if the public servers stay unreliable. Stop suggestions use the free public ones, which refused or timed out on every request while v2 was being tested.
+- Drag to reorder loop stops (up and down buttons for now).
+- Re-route production rides saved before the road-split fix: "Refresh routes" on each crew's admin page.

@@ -3,12 +3,10 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Cloud, CloudRain, Snowflake, Sun } from "lucide-react";
 import { commentLoop, deleteLoop, deleteLoopComment, toggleLoopIn } from "@/app/g/[slug]/loop-actions";
 import { duration, km, prettyDate, timeAgo } from "@/lib/format";
 import { loopDate, loopDays } from "@/lib/loops";
 import type { LoopDetail } from "@/lib/loop-data";
-import type { WeatherDay } from "@/lib/weather-types";
 import { Avatar } from "./avatar";
 import { attempt, shareLink, toast } from "./toast";
 
@@ -26,7 +24,7 @@ export function LoopView({
   slug: string;
   loop: LoopDetail;
   meId: string;
-  weather: (WeatherDay | null | undefined)[];
+  weather: React.ReactNode[];
   liveIds: string[];
 }) {
   const router = useRouter();
@@ -62,7 +60,7 @@ export function LoopView({
         </p>
         {loop.notes && <p className="mt-4 whitespace-pre-wrap">{loop.notes}</p>}
         <div className="mt-6 flex flex-wrap gap-2">
-          <button disabled={busy} className="btn btn-ink" onClick={() => run(() => toggleLoopIn(slug, loop.id))}>
+          <button disabled={busy} aria-pressed={loop.imIn} className={`btn ${loop.imIn ? "btn-accent" : "btn-ink"}`} onClick={() => run(() => toggleLoopIn(slug, loop.id))}>
             {loop.imIn ? "I'm in ✓" : "Count me in"}
           </button>
           <button className="btn btn-line" onClick={() => void shareLink({ title: loop.name, text: `${loop.name}: ${km(loop.totalKm)}${loop.startDate ? ` · ${prettyDate(loop.startDate)}` : ""}`, url: location.href, whatsappFallback: true })}>Share</button>
@@ -95,16 +93,7 @@ export function LoopView({
               {(day.km > 450 || day.min > 540) && (
                 <p className="mt-2 text-danger">Long day: over 450 km or 9 hours of riding.</p>
               )}
-              {day.night && weather[i] === null && <p className="mt-2 text-muted">Forecast unavailable.</p>}
-              {day.night && weather[i] && (
-                <div className="mt-2 flex items-center gap-2 text-muted">
-                  <WeatherIcon code={weather[i]!.code} />
-                  <p>
-                    {weather[i]!.max}° / {weather[i]!.min}° · {weather[i]!.rainChance}% rain · wind {weather[i]!.wind}{" "}
-                    km/h
-                  </p>
-                </div>
-              )}
+              {weather[i]}
             </div>
           ))}
         </section>
@@ -162,6 +151,14 @@ export function LoopView({
               maxLength={1000}
               value={body}
               onChange={(e) => setBody(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia("(pointer: fine)").matches) {
+                  e.preventDefault();
+                  if (!busy && body.trim()) {
+                    void run(() => commentLoop(slug, loop.id, body)).then((ok) => { if (ok) setBody(""); });
+                  }
+                }
+              }}
               placeholder="Say something…"
             />
           </label>
@@ -192,9 +189,4 @@ export function LoopView({
       </div>
     </div>
   );
-}
-
-function WeatherIcon({ code }: { code: number }) {
-  const Icon = code <= 1 ? Sun : code <= 3 ? Cloud : code >= 71 && code <= 77 ? Snowflake : CloudRain;
-  return <Icon size={18} aria-label="Forecast" />;
 }
