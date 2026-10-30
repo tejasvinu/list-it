@@ -258,13 +258,102 @@ export function parseMapsUrl(raw: string) {
 
   // Where the map was looking. Used outright when there's nothing else, and otherwise to keep a
   // name lookup from wandering off to a different place with the same name.
-  const at = path.match(/@(-?\d+\.\d+),(-?\d+\.\d+)(?:,(\d+(?:\.\d+)?)z)?/);
-  const view = at ? { lat: Number(at[1]), lng: Number(at[2]), zoom: at[3] ? Number(at[3]) : null } : null;
+  const view = viewOf(path);
   if (lat === undefined && !text && view) {
     lat = view.lat;
     lng = view.lng;
   }
   return { lat, lng, text, view };
+}
+
+type View = { lat: number; lng: number; zoom: number | null };
+
+function viewOf(path: string): View | null {
+  const at = path.match(/@(-?\d+\.\d+),(-?\d+\.\d+)(?:,(\d+(?:\.\d+)?)z)?/);
+  return at ? { lat: Number(at[1]), lng: Number(at[2]), zoom: at[3] ? Number(at[3]) : null } : null;
+}
+
+type DataNode = { field: number; type: string; value: string; children: DataNode[] };
+
+/** Maps' `data=!4m…!1m…` blob is a flattened tree: an `m` token holds the next N tokens. */
+function parseDataBlob(data: string) {
+  const tokens = [...data.matchAll(/!(\d+)([a-z])([^!]*)/g)];
+  let i = 0;
+  const take = (count: number): DataNode[] => {
+    const nodes: DataNode[] = [];
+    const end = i + count;
+    while (i < end && i < tokens.length) {
+      const [, field, type, value] = tokens[i++];
+      const node: DataNode = { field: Number(field), type, value, children: [] };
+      if (type === "m") node.children = take(Number(value));
+      nodes.push(node);
+    }
+    return nodes;
+  };
+  return take(tokens.length);
+}
+
+/**
+ * The directions list: a `!4m` holding one `!1m` per stop, usually followed by the travel mode (`!3e`).
+ * Dragged via points live inside their stop's `!1m`, so they never count as stops.
+ */
+function routeStops(nodes: DataNode[], count: number): DataNode[] | null {
+  for (const node of nodes) {
+    const stops = node.children.filter((c) => c.field === 1 && c.type === "m");
+    const travelMode = node.children.some((c) => c.field === 3 && c.type === "e");
+    const onlyStops = node.field === 4 && stops.length === node.children.length;
+    if (stops.length === count && (travelMode || onlyStops)) return stops;
+    const inner = routeStops(node.children, count);
+    if (inner) return inner;
+  }
+  return null;
+}
+
+const child = (node: DataNode | undefined, field: number, type: string) =>
+  node?.children.find((c) => c.field === field && c.type === type);
+
+/** Every stop of a directions link, in order. A blank stop is "your location". */
+export function parseMapsRoute(raw: string) {
+  const url = new URL(raw);
+  const path = url.pathname;
+  const view = viewOf(path);
+  const dir = path.match(/\/maps\/dir\/(.*?)(?:\/@|\/data=|\/?$)/);
+  if (!dir) return { waypoints: [], view };
+
+  let texts: (string | undefined)[];
+  if (dir[1]) {
+    texts = dir[1].split("/").map((s) => decodeSegment(s) || undefined);
+  } else {
+    // https://www.google.com/maps/dir/?api=1&origin=…&waypoints=A|B&destination=…
+    const q = url.searchParams;
+    if (!q.get("destination")) return { waypoints: [], view };
+    texts = [q.get("origin"), ...(q.get("waypoints")?.split("|") ?? []), q.get("destination")].map(
+      (s) => s?.trim() || undefined,
+    );
+  }
+
+  const data = path.match(/\/data=([^/]*)/)?.[1];
+  const nodes = data ? routeStops(parseDataBlob(data), texts.length) : null;
+  const waypoints = texts.map((original, i) => {
+    let text = original;
+    let lat: number | undefined;
+    let lng: number | undefined;
+    const m = text?.match(COORD);
+    if (text && m && text.replace(COORD, "").trim().length < 3) {
+      lat = Number(m[1]);
+      lng = Number(m[2]);
+      text = undefined;
+    }
+    const pin = child(nodes?.[i], 2, "m");
+    const x = child(pin, 1, "d");
+    const y = child(pin, 2, "d");
+    if (x && y) {
+      lat = Number(y.value);
+      lng = Number(x.value);
+    }
+    return { text, lat, lng };
+  });
+  return { waypoints, view };
 }
 
 /** A geocoded name further than this from a zoomed-in map view is probably a namesake. */
@@ -326,17 +415,31 @@ export async function resolvePlace(input: string, { lookupName = true } = {}): P
   }
 
   const original = linkMatch[0];
+  const place = await placeFrom(parseMapsUrl(await openMapsLink(original)), original, lookupName);
+  if (!place) throw new Error("Couldn't find a location in that link. Try searching by name instead.");
+  return place;
+}
+
+/** Expands a share link, refusing anything that isn't Google Maps before or after the redirects. */
+async function openMapsLink(original: string) {
   const notMaps = new Error("That doesn't look like a Google Maps link.");
-  let expanded: string;
   try {
     if (!isGoogleMapsHost(new URL(original).hostname)) throw notMaps;
-    expanded = await expandShortLink(original);
+    const expanded = await expandShortLink(original);
     if (!isGoogleMapsHost(new URL(expanded).hostname)) throw notMaps;
+    return expanded;
   } catch (e) {
     throw e === notMaps ? e : new Error("Couldn't open that link. Copy it again from Google Maps.");
   }
+}
 
-  const parsed = parseMapsUrl(expanded);
+/** Turns what a link says about one place (a name, a pin, where the map was looking) into a Place. */
+async function placeFrom(
+  parsed: { lat?: number; lng?: number; text?: string; view: View | null },
+  mapsUrl: string | null,
+  lookupName: boolean,
+  { viewAsPlace = true } = {},
+): Promise<Place | null> {
   let name: string | null = null;
   let area: string | null = null;
   let { lat, lng } = parsed;
@@ -355,7 +458,7 @@ export async function resolvePlace(input: string, { lookupName = true } = {}): P
         const geo = await geocodeText(text, { near: view ?? HOME });
         // A zoomed-in view is better evidence than a name lookup that landed somewhere else.
         const trustView = !!view && (view.zoom ?? 0) >= 10 && (!geo || haversineKm(geo, view) > VIEW_TRUST_KM);
-        const at = trustView ? view : (geo ?? view);
+        const at = trustView ? view : (geo ?? (viewAsPlace ? view : null));
         if (at) {
           lat = at.lat;
           lng = at.lng;
@@ -365,10 +468,37 @@ export async function resolvePlace(input: string, { lookupName = true } = {}): P
     }
   }
 
-  if (lat === undefined || lng === undefined) {
-    throw new Error("Couldn't find a location in that link. Try searching by name instead.");
+  if (lat === undefined || lng === undefined) return null;
+  return finish({ name, area, lat, lng, mapsUrl }, lookupName);
+}
+
+/**
+ * Every stop of a Google Maps directions link (short or long, or a message containing one), in order.
+ * Stops it can't place, including "your location", are listed in `skipped` instead.
+ */
+export async function resolveRoute(input: string) {
+  const link = String(input ?? "").match(/https?:\/\/\S+/)?.[0];
+  if (!link) throw new Error("Paste a Google Maps directions link.");
+  const { waypoints, view } = parseMapsRoute(await openMapsLink(link));
+  if (waypoints.length < 2) {
+    throw new Error("That link is a single place, not a route. Use “Use link or coordinates” for it.");
   }
-  return finish({ name, area, lat, lng, mapsUrl: original }, lookupName);
+  // A route's view spans the whole trip, so it only biases name lookups and never stands in for a stop.
+  const near = view && { ...view, zoom: null };
+  const found = await Promise.all(
+    waypoints.map((w) =>
+      w.text || w.lat !== undefined
+        ? placeFrom({ ...w, view: near }, null, !w.text, { viewAsPlace: false }).catch(() => null)
+        : undefined,
+    ),
+  );
+  const places: Place[] = [];
+  const skipped: string[] = [];
+  found.forEach((place, i) => {
+    if (place) places.push(place);
+    else skipped.push(place === undefined ? "your current location" : (waypoints[i].text ?? "a stop"));
+  });
+  return { places, skipped };
 }
 
 // ---------- Routing (OSRM) ----------

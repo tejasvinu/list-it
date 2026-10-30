@@ -43,3 +43,45 @@ export function loopDate(start: string, day: number) {
   date.setUTCDate(date.getUTCDate() + day);
   return date.toISOString().slice(0, 10);
 }
+
+type Point = { lat: number; lng: number };
+
+function kmApart(a: Point, b: Point) {
+  const rad = Math.PI / 180;
+  const h =
+    Math.sin(((b.lat - a.lat) * rad) / 2) ** 2 +
+    Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(((b.lng - a.lng) * rad) / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(h));
+}
+
+/** A route's first or last stop this close to the loop's start is just home ("Bengaluru" for a rider in Hebbal). */
+const HOME_KM = 25;
+/** An imported stop this close to a crew ride becomes that ride. */
+const RIDE_KM = 1.5;
+
+/** Turns the places of an imported Maps route into loop stops. */
+export function importStops(
+  places: (Point & { name: string })[],
+  start: StartPoint,
+  rides: (Point & { id: string; name: string })[],
+) {
+  const dropped: string[] = [];
+  const kept = places.filter((p, i) => {
+    const end = i === 0 || i === places.length - 1;
+    if (end && kmApart(p, start) <= HOME_KM) {
+      dropped.push(p.name);
+      return false;
+    }
+    return true;
+  });
+  const stops = kept.map((p): LoopStop => {
+    const ride = rides
+      .map((r) => ({ r, km: kmApart(p, r) }))
+      .filter((x) => x.km <= RIDE_KM)
+      .sort((a, b) => a.km - b.km)[0]?.r;
+    return ride
+      ? { destinationId: ride.id, name: ride.name, lat: ride.lat, lng: ride.lng, nightHere: false }
+      : { destinationId: null, name: p.name, lat: p.lat, lng: p.lng, nightHere: false };
+  });
+  return { stops, dropped };
+}

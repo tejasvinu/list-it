@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getGroupContext } from "@/lib/data";
 import { cols, fromDoc, toDoc, type Activity } from "@/lib/db";
 import { HOME } from "@/lib/config";
-import { resolvePlace, searchPlaces } from "@/lib/geo";
+import { resolvePlace, resolveRoute, searchPlaces } from "@/lib/geo";
 import { routeLoop } from "@/lib/loop-routing";
 import { rid } from "@/lib/ids";
 import { notify } from "@/lib/notifications";
@@ -56,6 +56,23 @@ export async function resolveLoopPlace(slug: string, input: string): Promise<Res
     };
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Couldn't find that place.");
+  }
+}
+
+export async function importLoopRoute(
+  slug: string,
+  input: string,
+): Promise<Result<{ places: { name: string; lat: number; lng: number }[]; skipped: string[] }>> {
+  await context(slug);
+  if (typeof input !== "string" || !input.trim() || input.length > 4000) return fail("Paste a Maps route first.");
+  try {
+    const { places, skipped } = await resolveRoute(input);
+    const near = places.filter((p) => inRange(p.lat, p.lng));
+    for (const p of places) if (!near.includes(p)) skipped.push(`${p.name} (too far from Bengaluru)`);
+    if (!near.length) return fail("Couldn't place any stops from that route.");
+    return { ok: true, places: near.map(({ name, lat, lng }) => ({ name, lat, lng })), skipped };
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Couldn't read that route.");
   }
 }
 

@@ -3,9 +3,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
-import { previewLoop, resolveLoopPlace, saveLoop, searchLoopPlaces } from "@/app/g/[slug]/loop-actions";
+import { importLoopRoute, previewLoop, resolveLoopPlace, saveLoop, searchLoopPlaces } from "@/app/g/[slug]/loop-actions";
 import { duration, km } from "@/lib/format";
-import { loopDays } from "@/lib/loops";
+import { importStops, loopDays } from "@/lib/loops";
 import type { Loop, LoopStop, StartPoint } from "@/lib/types";
 import { RouteArt } from "./route-art";
 import { attempt } from "./toast";
@@ -36,6 +36,9 @@ export function LoopBuilder({
     loop ? { key: JSON.stringify(loop.stops), routed: loop } : null,
   );
   const [busy, setBusy] = useState(false);
+  const [routeLink, setRouteLink] = useState("");
+  const [imported, setImported] = useState<{ stops: LoopStop[]; notes: string[] } | null>(null);
+  const [importNote, setImportNote] = useState("");
   const [error, setError] = useState("");
   const seq = useRef(0);
   const key = JSON.stringify(stops);
@@ -69,12 +72,52 @@ export function LoopBuilder({
         setPlaces(result.places);
         if (!result.places.length) setError("No places found. Try a Maps link.");
       } else if (result) setError(result.error);
+    } else if (/https?:\/\//.test(query) && (await importRoute(query, { quiet: true }))) {
+      // A directions link pasted here imports the whole route, not just its last stop.
+      setQuery("");
     } else {
       const result = await attempt(() => resolveLoopPlace(slug, query));
       if (result?.ok) add(result.place);
       else if (result) setError(result.error);
     }
     setBusy(false);
+  };
+  /** Returns whether the link was a route. With `quiet`, a link that isn't one fails silently. */
+  const importRoute = async (link: string, { quiet = false } = {}) => {
+    setBusy(true);
+    setError("");
+    setImportNote("");
+    const result = await attempt(() => importLoopRoute(slug, link));
+    setBusy(false);
+    if (!result) return false;
+    if (!result.ok) {
+      if (!quiet) setError(result.error);
+      return false;
+    }
+    const { stops: found, dropped } = importStops(result.places, start, rides);
+    const notes = [...new Set([...dropped.map((name) => `${name} (your start)`), ...result.skipped])];
+    if (!found.length) setError(`Every stop in that route was skipped: ${notes.join(", ")}.`);
+    else if (stops.length) setImported({ stops: found, notes });
+    else applyImport(found, notes, false);
+    return true;
+  };
+  const applyImport = (found: LoopStop[], notes: string[], append: boolean) => {
+    const all = append ? [...stops, ...found] : found;
+    const kept = all.slice(0, 20);
+    const added = kept.length - (append ? stops.length : 0);
+    const trimmed = all.length - kept.length;
+    setStops(kept);
+    setImported(null);
+    setRouteLink("");
+    setImportNote(
+      [
+        `Added ${added} ${added === 1 ? "stop" : "stops"}.`,
+        notes.length ? `Skipped ${notes.join(", ")}.` : "",
+        trimmed ? `Left out the last ${trimmed}: a loop can have up to 20 stops.` : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
   };
   const save = async () => {
     setBusy(true);
@@ -136,6 +179,49 @@ export function LoopBuilder({
           />
         </label>
       </div>
+      <section className="mt-8 rounded-panel bg-surface p-4">
+        <label className="block font-semibold">
+          Import a Google Maps route
+          <input
+            className="field mt-2"
+            value={routeLink}
+            onChange={(e) => {
+              setRouteLink(e.target.value);
+              setImported(null);
+            }}
+            placeholder="Paste a directions link"
+          />
+        </label>
+        <p className="mt-2 text-[15px] text-muted">
+          Every stop on the route is added in order. Your start is left off the ends, and stops near a crew ride
+          become that ride.
+        </p>
+        {imported ? (
+          <div className="mt-3">
+            <p className="text-[15px]">
+              Found {imported.stops.length} {imported.stops.length === 1 ? "stop" : "stops"}. This loop already has
+              some.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button className="btn btn-ink" onClick={() => applyImport(imported.stops, imported.notes, false)}>
+                Replace stops
+              </button>
+              <button className="btn btn-line" onClick={() => applyImport(imported.stops, imported.notes, true)}>
+                Add to the end
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button className="btn btn-line mt-3" disabled={busy || !routeLink.trim()} onClick={() => importRoute(routeLink)}>
+            {busy && routeLink ? "Reading the route…" : "Import route"}
+          </button>
+        )}
+        {importNote && (
+          <p role="status" className="mt-3 text-[15px] text-muted">
+            {importNote}
+          </p>
+        )}
+      </section>
       <h2 className="display mt-8 text-[30px]">Stops</h2>
       {!stops.length && <p className="mt-2 text-muted">Add a ride or find a place to start your loop.</p>}
       <ol className="mt-3 space-y-2">

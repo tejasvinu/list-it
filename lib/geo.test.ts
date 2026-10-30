@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decodePolyline, olcRecover, parseMapsUrl, PLUS_CODE, roadSplitOf, simplify } from "./geo";
+import { decodePolyline, olcRecover, parseMapsRoute, parseMapsUrl, PLUS_CODE, roadSplitOf, simplify } from "./geo";
 
 test("parseMapsUrl takes the last exact pin over the viewport", () => {
   const p = parseMapsUrl("https://www.google.com/maps/place/Yercaud/@11.77,78.20,13z/data=!3d11.1!4d78.1!3d11.7747614!4d78.2093355");
@@ -108,4 +108,92 @@ test("roadSplitOf counts only the part of a highway step inside the city as city
   const split = roadSplitOf([{ distance: 100000, ref: "NH 44", geometry: encode(line), maneuver: { location: [77.5946, 12.9716] } }]);
   assert.ok(split.city >= 20 && split.city <= 25, `city ${split.city}`);
   assert.equal(split.city + split.nh, 100);
+});
+
+// Three named stops, each with its exact pin in the data blob (!2m2!1d<lng>!2d<lat>).
+const TRIP =
+  "https://www.google.com/maps/dir/Bengaluru,+Karnataka/Yercaud,+Tamil+Nadu/Mettur,+Tamil+Nadu/@12.1,78.0,8z" +
+  "/data=!3m1!4b1!4m20!4m19" +
+  "!1m5!1m1!1s0x3bae1670c9b44e6d:0xf8dfc3e8517e4fe0!2m2!1d77.5945627!2d12.9715987" +
+  "!1m5!1m1!1s0x3babf0d1b6b9e8c3:0x9d0c4e1c3b1b0f1a!2m2!1d78.2093355!2d11.7747614" +
+  "!1m5!1m1!1s0x3babcf1a1e4d3b39:0x6f2a1c8a8b1c9d2e!2m2!1d77.8008!2d11.7863" +
+  "!3e0";
+
+test("parseMapsRoute reads every stop of a directions link with its pin", () => {
+  const r = parseMapsRoute(TRIP);
+  assert.deepEqual(
+    r.waypoints.map((w) => [w.text, w.lat, w.lng]),
+    [
+      ["Bengaluru, Karnataka", 12.9715987, 77.5945627],
+      ["Yercaud, Tamil Nadu", 11.7747614, 78.2093355],
+      ["Mettur, Tamil Nadu", 11.7863, 77.8008],
+    ],
+  );
+  assert.deepEqual(r.view, { lat: 12.1, lng: 78.0, zoom: 8 });
+});
+
+test("parseMapsRoute ignores dragged via points and reads coordinate stops", () => {
+  const r = parseMapsRoute(
+    "https://www.google.com/maps/dir/Yercaud/12.5,77.9/@12,78,9z/data=!4m14!4m13" +
+      "!1m10!1m1!1s0x3babf0d1b6b9e8c3:0x9d0c4e1c3b1b0f1a!2m2!1d78.2093355!2d11.7747614!3m4!1m2!1d78.01!2d12.2!3s0x1:0x2" +
+      "!1m0!3e0",
+  );
+  assert.deepEqual(
+    r.waypoints.map((w) => [w.text, w.lat, w.lng]),
+    [
+      ["Yercaud", 11.7747614, 78.2093355],
+      [undefined, 12.5, 77.9],
+    ],
+  );
+});
+
+test("parseMapsRoute keeps an empty 'your location' stop as blank, and names without data", () => {
+  const r = parseMapsRoute("https://www.google.com/maps/dir//Nandi+Hills/Skandagiri/");
+  assert.deepEqual(
+    r.waypoints.map((w) => [w.text, w.lat]),
+    [
+      [undefined, undefined],
+      ["Nandi Hills", undefined],
+      ["Skandagiri", undefined],
+    ],
+  );
+});
+
+test("parseMapsRoute reads the api=1 form with waypoints", () => {
+  const r = parseMapsRoute(
+    "https://www.google.com/maps/dir/?api=1&origin=Bengaluru&destination=Mettur&waypoints=Yercaud%7C11.9,78.1",
+  );
+  assert.deepEqual(
+    r.waypoints.map((w) => [w.text, w.lat, w.lng]),
+    [
+      ["Bengaluru", undefined, undefined],
+      ["Yercaud", undefined, undefined],
+      [undefined, 11.9, 78.1],
+      ["Mettur", undefined, undefined],
+    ],
+  );
+});
+
+test("parseMapsRoute finds no stops in a place link", () => {
+  assert.equal(parseMapsRoute("https://www.google.com/maps/place/Yercaud/@11.77,78.20,13z").waypoints.length, 0);
+});
+
+test("parseMapsRoute reads a real directions link copied from the address bar", () => {
+  const r = parseMapsRoute(
+    "https://www.google.com/maps/dir/Bengaluru,+Karnataka/Goa/Mangaluru,+Karnataka/Bengaluru,+Karnataka/@14.0541068,75.5910494,414008m" +
+      "/data=!3m1!1e3!4m26!4m25!1m5!1m1!1s0x3bae1670c9b44e6d:0xf8dfc3e8517e4fe0!2m2!1d77.57754!2d12.9628957" +
+      "!1m5!1m1!1s0x3bbfba106336b741:0xeaf887ff62f34092!2m2!1d74.123996!2d15.2993265" +
+      "!1m5!1m1!1s0x3ba35a4c37bf488f:0x827bbc7a74fcfe64!2m2!1d74.8388112!2d12.8854777" +
+      "!1m5!1m1!1s0x3bae1670c9b44e6d:0xf8dfc3e8517e4fe0!2m2!1d77.57754!2d12.9628957" +
+      "!3e0?entry=ttu&g_ep=EgoyMDI2MTAyNy4wIKXMDSoASAFQAw%3D%3D",
+  );
+  assert.deepEqual(
+    r.waypoints.map((w) => [w.text, w.lat, w.lng]),
+    [
+      ["Bengaluru, Karnataka", 12.9628957, 77.57754],
+      ["Goa", 15.2993265, 74.123996],
+      ["Mangaluru, Karnataka", 12.8854777, 74.8388112],
+      ["Bengaluru, Karnataka", 12.9628957, 77.57754],
+    ],
+  );
 });
