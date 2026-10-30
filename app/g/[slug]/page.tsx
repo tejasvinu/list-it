@@ -2,18 +2,20 @@ import { Suspense } from "react";
 import { forecast } from "@/lib/weather";
 import { daysUntil, prettyDate } from "@/lib/format";
 import { getFeed, getGroupContext, lite } from "@/lib/data";
+import { getLoops } from "@/lib/loop-data";
 import { FeedView } from "@/components/feed-view";
 
 export default async function FeedPage({ params }: PageProps<"/g/[slug]">) {
   const { slug } = await params;
   const ctx = await getGroupContext(slug);
   if (!ctx.viewer) return null;
-  const items = await getFeed(ctx);
+  const [items, loops] = await Promise.all([getFeed(ctx), getLoops(ctx)]);
   return (
     <FeedView
       slug={slug}
       groupName={ctx.group.name}
       items={items}
+      loops={loops}
       forecasts={Object.fromEntries(items.flatMap((item) => {
         if (item.status !== "planned" || !item.statusDate || daysUntil(item.statusDate) < 0 || daysUntil(item.statusDate) >= 16) return [];
         const weather = forecast(item).catch(() => null);
