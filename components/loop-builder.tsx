@@ -35,7 +35,9 @@ export function LoopBuilder({
   const [preview, setPreview] = useState<{ key: string; routed: Routed | null } | null>(
     loop ? { key: JSON.stringify(loop.stops), routed: loop } : null,
   );
-  const [busy, setBusy] = useState(false);
+  // Which request is running, so each button only says it is working when it is the one.
+  const [task, setTask] = useState<"find" | "import" | "save" | null>(null);
+  const busy = task !== null;
   const [routeLink, setRouteLink] = useState("");
   const [imported, setImported] = useState<{ stops: LoopStop[]; notes: string[] } | null>(null);
   const [importNote, setImportNote] = useState("");
@@ -64,7 +66,7 @@ export function LoopBuilder({
     setError("");
   };
   const find = async (search: boolean) => {
-    setBusy(true);
+    setTask("find");
     setError("");
     if (search) {
       const result = await attempt(() => searchLoopPlaces(slug, query));
@@ -80,15 +82,13 @@ export function LoopBuilder({
       if (result?.ok) add(result.place);
       else if (result) setError(result.error);
     }
-    setBusy(false);
+    setTask(null);
   };
   /** Returns whether the link was a route. With `quiet`, a link that isn't one fails silently. */
   const importRoute = async (link: string, { quiet = false } = {}) => {
-    setBusy(true);
     setError("");
     setImportNote("");
     const result = await attempt(() => importLoopRoute(slug, link));
-    setBusy(false);
     if (!result) return false;
     if (!result.ok) {
       if (!quiet) setError(result.error);
@@ -119,14 +119,19 @@ export function LoopBuilder({
         .join(" "),
     );
   };
+  const importLink = async () => {
+    setTask("import");
+    await importRoute(routeLink);
+    setTask(null);
+  };
   const save = async () => {
-    setBusy(true);
+    setTask("save");
     const result = await attempt(() =>
       saveLoop(slug, { name, notes, startDate: date || null, stops }, loop?.id ?? null),
     );
     if (result?.ok) router.push(`/g/${slug}/loops/${result.id}`);
     else if (result) setError(result.error);
-    setBusy(false);
+    setTask(null);
   };
   const move = (index: number, delta: number) => {
     const next = [...stops];
@@ -212,8 +217,8 @@ export function LoopBuilder({
             </div>
           </div>
         ) : (
-          <button className="btn btn-line mt-3" disabled={busy || !routeLink.trim()} onClick={() => importRoute(routeLink)}>
-            {busy && routeLink ? "Reading the route…" : "Import route"}
+          <button className="btn btn-line mt-3" disabled={busy || !routeLink.trim()} onClick={importLink}>
+            {task === "import" ? "Reading the route…" : "Import route"}
           </button>
         )}
         {importNote && (
@@ -363,7 +368,7 @@ export function LoopBuilder({
         </p>
       )}
       <button className="btn btn-ink mt-6" disabled={busy || !name.trim() || !stops.length} onClick={save}>
-        {busy ? "Saving…" : "Save loop"}
+        {task === "save" ? "Saving…" : "Save loop"}
       </button>
     </div>
   );
