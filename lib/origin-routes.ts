@@ -1,15 +1,25 @@
 import "server-only";
 import { cols } from "./db";
 import { kmBetween } from "./geo";
+import { rideRouteKey } from "./ride-model";
+import { routeLoop } from "./loop-routing";
+import type { Destination } from "./db";
 import type { StartPoint } from "./types";
 
 const UA = "list-it/1.0 (https://list-it-kappa.vercel.app; private ride planner for a riding group)";
 export const originKey = (start: StartPoint) => ({ lat: Number(start.lat.toFixed(3)), lng: Number(start.lng.toFixed(3)) });
-export async function originRoute(destination: { id: string; lat: number; lng: number }, start: StartPoint) {
+export async function originRoute(destination: Pick<Destination, "id" | "lat" | "lng" | "itinerary">, start: StartPoint) {
   const c = await cols();
   const key = { destinationId: destination.id, ...originKey(start) };
   const cached = await c.originRoutes.findOne(key);
-  if (cached && cached.destinationLat === destination.lat && cached.destinationLng === destination.lng && (!cached.approx || Date.now() - cached.updatedAt.getTime() < 3600000)) return cached;
+  const routeKey = destination.itinerary ? rideRouteKey(destination) : undefined;
+  if (cached && cached.routeKey === routeKey && cached.destinationLat === destination.lat && cached.destinationLng === destination.lng && (!cached.approx || Date.now() - cached.updatedAt.getTime() < 3600000)) return cached;
+  if (destination.itinerary) {
+    const routed = await routeLoop(start, destination.itinerary.stops);
+    const value = { ...key, distanceKm: routed.totalKm, durationMin: routed.totalMin, approx: routed.legs.some(leg => leg.approx), destinationLat: destination.lat, destinationLng: destination.lng, routeKey, updatedAt: new Date() };
+    await c.originRoutes.updateOne(key, { $set: value }, { upsert: true });
+    return value;
+  }
   let distanceKm: number, durationMin: number, approx = false;
   try {
     const coords = `${start.lng},${start.lat};${destination.lng},${destination.lat};${start.lng},${start.lat}`;
@@ -24,6 +34,6 @@ export async function originRoute(destination: { id: string; lat: number; lng: n
     durationMin = Math.round(distanceKm / 50 * 60); approx = true;
   }
   const value = { ...key, distanceKm, durationMin, approx, destinationLat: destination.lat, destinationLng: destination.lng, updatedAt: new Date() };
-  await c.originRoutes.updateOne(key, { $set: value }, { upsert: true });
+  await c.originRoutes.updateOne(key, { $set: value, $unset: { routeKey: "" } }, { upsert: true });
   return value;
 }

@@ -1,6 +1,7 @@
 import "server-only";
 import { cols, fromDoc, toDoc, type Notification } from "./db";
 import { rid } from "./ids";
+import { rideRef } from "./ride-model";
 import type { GroupContext } from "./data";
 
 export async function notify(
@@ -12,6 +13,8 @@ export async function notify(
   detail: string | null = null,
   extra: string[] = [],
 ) {
+  const ref = destinationId ? rideRef(destinationId) : null;
+  if (ref?.source === "loop") { loopId = ref.id; destinationId = null; }
   const c = await cols();
   const recipients = new Set(extra);
   if (destinationId) {
@@ -30,8 +33,12 @@ export async function notify(
   if (loopId) {
     const loop = await c.loops.findOne({ _id: loopId, groupId, deletedAt: null });
     if (!loop) return;
-    if (["loop-in", "loop-commented"].includes(kind)) recipients.add(loop.riderId);
-    if (kind === "loop-commented") {
+    if (["loop-in", "loop-commented", "in", "commented", "reacted", "rode", "done", "stop"].includes(kind)) recipients.add(loop.riderId);
+    if (kind === "planned" && detail) {
+      const interested = await c.loopInterests.distinct("riderId", { loopId });
+      interested.forEach(id => recipients.add(id));
+    }
+    if (kind === "loop-commented" || kind === "commented") {
       const commenters = await c.loopComments.distinct("riderId", { loopId, deletedAt: null });
       commenters.forEach((id) => recipients.add(id));
     }

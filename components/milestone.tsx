@@ -25,13 +25,13 @@ export function Milestone({
   approx?: boolean;
   className?: string;
 }) {
-  const road = mainRoad(split);
+  const road = split ? mainRoad(split) : null;
   const value = Math.round(distanceKm).toLocaleString("en-IN");
-  const label = `${approx ? "About " : ""}${value} km round trip to ${name}, mostly ${ROAD_SPLIT_LABELS[road].label.toLowerCase()}`;
+  const label = `${approx ? "About " : ""}${value} km round trip to ${name}${road ? `, mostly ${ROAD_SPLIT_LABELS[road].label.toLowerCase()}` : ""}`;
   return (
-    <span role="img" aria-label={label} className={`milestone ${className}`} style={{ fontSize: size, ["--cap" as string]: ROAD_SPLIT_LABELS[road].color }}>
+    <span role="img" aria-label={label} className={`milestone ${className}`} style={{ fontSize: size, ["--cap" as string]: ROAD_SPLIT_LABELS[road ?? "city"].color }}>
       <span className="milestone-cap" aria-hidden>
-        {CAP_TEXT[road]}
+        {road ? CAP_TEXT[road] : ""}
       </span>
       <span className="milestone-face" aria-hidden>
         <i>{name}</i>

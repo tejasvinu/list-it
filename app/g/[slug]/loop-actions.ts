@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getGroupContext } from "@/lib/data";
 import { cols, fromDoc, toDoc, type Activity } from "@/lib/db";
 import { HOME } from "@/lib/config";
+import { loopKey } from "@/lib/ride-model";
 import { resolvePlace, resolveRoute, searchPlaces } from "@/lib/geo";
 import { routeLoop } from "@/lib/loop-routing";
 import { rid } from "@/lib/ids";
@@ -111,6 +112,7 @@ export async function previewLoop(
 
 export async function saveLoop(slug: string, input: unknown, id: string | null): Promise<Result<{ id: string }>> {
   const ctx = await context(slug);
+  if (id === null && process.env.DISABLE_NEW_ITINERARIES === "1") return fail("New itineraries are temporarily unavailable.");
   if (id !== null && (typeof id !== "string" || !id || id.length > 80)) return fail("Loop not found.");
   const data = validateLoop(input);
   if (!data) return fail("Add a name and at least one valid stop, and check the date.");
@@ -120,7 +122,8 @@ export async function saveLoop(slug: string, input: unknown, id: string | null):
   const stops = await checkedStops(ctx.group.id, data.stops);
   if (!stops) return fail("A ride in this loop is no longer available.");
   const start = old?.start ?? ctx.viewer.start ?? HOME;
-  const routed = await routeLoop(start, stops);
+  const sameGeometry = old && JSON.stringify(old.stops.map(s => [s.lat, s.lng])) === JSON.stringify(stops.map(s => [s.lat, s.lng]));
+  const routed = sameGeometry ? { legs: old.legs, route: old.route, totalKm: old.totalKm, totalMin: old.totalMin } : await routeLoop(start, stops);
   const now = new Date();
   if (old) {
     const result = await c.loops.updateOne(
@@ -160,6 +163,7 @@ export async function deleteLoop(slug: string, id: string): Promise<Result> {
     { $set: { deletedAt: new Date() } },
   );
   if (!result.matchedCount) return fail("Only the owner can delete this loop.");
+  await (await cols()).uploads.deleteMany({ groupId: ctx.group.id, destinationId: loopKey(id) });
   refresh(slug);
   return { ok: true };
 }

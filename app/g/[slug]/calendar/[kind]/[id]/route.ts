@@ -1,6 +1,7 @@
 import { getGroupBySlug, getViewer } from "@/lib/auth";
 import { cols } from "@/lib/db";
 import { calendarEvent } from "@/lib/calendar";
+import { rideDays, rideMaps } from "@/lib/ride-model";
 import { googleMapsPlace } from "@/lib/format";
 import { loopDays } from "@/lib/loops";
 import { validDate } from "@/lib/validate";
@@ -19,8 +20,8 @@ export async function GET(request: Request, { params }: RouteContext<"/g/[slug]/
       id,
       title: ride.name,
       date: ride.statusDate,
-      days: 1,
-      maps: ride.mapsUrl ?? googleMapsPlace(ride.lat, ride.lng),
+      days: rideDays(ride),
+      maps: ride.itinerary ? rideMaps(ride) : ride.mapsUrl ?? googleMapsPlace(ride.lat, ride.lng),
       link: `${origin}/g/${slug}/d/${id}`,
     };
   } else if (kind === "loop") {

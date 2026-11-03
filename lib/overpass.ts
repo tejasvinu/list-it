@@ -12,7 +12,7 @@ export async function suggestStops(destination: Destination): Promise<SuggestedS
     if (cached.failed && age < 10 * 60000) return null;
     if (!cached.failed && age < 7 * 86400000) return cached.stops;
   }
-  const { query, samples } = buildStopQuery(destination.route ?? [], destination);
+  const { query, samples } = buildStopQuery(destination.route ?? [], { ...destination, fullRoute: !!destination.itinerary });
   if (!samples.length) return [];
   const outboundKm = samples.at(-1)?.km ?? 0;
   const deadline = Date.now() + 40000;

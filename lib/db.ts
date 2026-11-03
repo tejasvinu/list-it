@@ -1,7 +1,7 @@
 import "server-only";
 import { MongoClient, type Binary, type Collection, type Db } from "mongodb";
 import { attachDatabasePool } from "@vercel/functions";
-import type { Photo, RoadSplit, StartPoint, Loop } from "./types";
+import type { Photo, RoadSplit, StartPoint, Loop, Itinerary } from "./types";
 export type { Loop } from "./types";
 
 // ---------- Shapes (as the app sees them; stored with `_id` instead of `id`) ----------
@@ -37,6 +37,7 @@ export type Rider = {
 };
 
 export type Destination = {
+  itinerary?: Itinerary | null;
   id: string;
   groupId: string;
   riderId: string;
@@ -93,7 +94,7 @@ export type Comment = {
   deletedAt: Date | null;
 };
 
-/** One per rider per destination */
+/** Relationship keys are raw destination IDs or `loop:<original ID>` for legacy loops. Existing indexes and records stay valid. */
 export type Reaction = { destinationId: string; riderId: string; emoji: string; createdAt: Date };
 /** "I'm in", one per rider per destination */
 export type Interest = { destinationId: string; riderId: string; createdAt: Date };
@@ -129,7 +130,7 @@ export type Upload = {
   groupSlot: number; riderSlot: number; createdAt: Date;
 };
 
-export type OriginRoute = { destinationId: string; lat: number; lng: number; distanceKm: number; durationMin: number; approx: boolean; destinationLat: number; destinationLng: number; updatedAt: Date };
+export type OriginRoute = { destinationId: string; lat: number; lng: number; distanceKm: number; durationMin: number; approx: boolean; destinationLat: number; destinationLng: number; routeKey?: string; updatedAt: Date };
 export type WeatherCache = { lat: number; lng: number; days: import("./weather-types").WeatherDay[]; updatedAt: Date };
 
 /** Fixed-window counter for rate limits; expires on its own at `resetAt`. */

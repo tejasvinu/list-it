@@ -15,6 +15,7 @@ import {
   kmBetween,
   photosNear,
   resolvePlace,
+  resolveRoute,
   routeFromHome,
   searchPlaces,
   type Place,
@@ -23,10 +24,15 @@ import {
 import { AVATAR_COLORS, AVATAR_EMOJIS, REACTIONS, STATUS_KEYS, STOP_KIND_KEYS } from "@/lib/config";
 import { routeSealOk, sealRoute } from "@/lib/seal";
 import { clean, cleanMultiline, inRange, validateDestination, validDate, validRideDate, validStart, type DestinationInput } from "@/lib/validate";
-import type { Photo, StartPoint } from "@/lib/types";
+import type { Photo, StartPoint, Itinerary } from "@/lib/types";
 import { originRoute } from "@/lib/origin-routes";
 import { notify } from "@/lib/notifications";
 import { suggestStops } from "@/lib/overpass";
+import { readRide, writeRide, validRidePlaces } from "@/lib/ride-store";
+import { rideRef, rideEndDate } from "@/lib/ride-model";
+import { importStops } from "@/lib/loops";
+import { HOME } from "@/lib/config";
+import { previewRideItinerary } from "./itinerary-actions";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -113,6 +119,8 @@ export async function signOut(slug: string) {
 // ---------- Places ----------
 
 export type Preview = RoutedPlace & {
+  itinerary?: Itinerary | null;
+  importNotes?: string[];
   photos: Photo[];
   /** Commons didn't answer, so there may well be photos; worth trying again later */
   photosFailed: boolean;
@@ -141,6 +149,20 @@ async function preview(ctx: Awaited<ReturnType<typeof requireRider>>, place: Pla
 export async function previewFromLink(slug: string, link: string): Promise<Result<{ preview: Preview }>> {
   const ctx = await requireRider(slug);
   try {
+    if (typeof link !== "string" || link.length > 4000) return fail("Paste a valid Maps link.");
+    if (/https?:\/\//.test(link)) {
+      let imported: Awaited<ReturnType<typeof resolveRoute>> | null = null;
+      try { imported = await resolveRoute(link); } catch (error) {
+        if (/\/dir\/|[?&]destination=/.test(link)) return fail(error instanceof Error ? error.message : "Could not read that route.");
+      }
+      if (imported) {
+        const rides = await (await cols()).destinations.find({ groupId: ctx.group.id, deletedAt: null }).toArray();
+        const { stops, dropped } = importStops(imported.places, ctx.viewer.start ?? HOME, rides.filter(d => !d.itinerary).map(d => ({ ...d, id: d._id })));
+        const result = await previewRideItinerary(slug, stops);
+        if (result.ok) result.preview.importNotes = [...imported.skipped.map(name => `${name} (not imported)`), ...dropped.map(name => `${name} (using your saved start instead)`)];
+        return result;
+      }
+    }
     return { ok: true, preview: await preview(ctx, await resolvePlace(link)) };
   } catch (e) {
     return fail(e instanceof Error ? e.message : "Couldn't read that link.");
@@ -197,6 +219,8 @@ export async function createDestination(slug: string, input: DestinationInput): 
   const valid = checkInput(input);
   if (!valid) return fail("Something's off with that place. Try finding it again.");
   const { riddenOn, ...data } = valid;
+  if (process.env.DISABLE_NEW_ITINERARIES === "1" && data.itinerary) return fail("New itineraries are temporarily unavailable.");
+  if (!(await validRidePlaces(ctx.group.id, data.itinerary))) return fail("A saved place is no longer available in this crew.");
   const id = rid(10);
   const now = new Date();
   await (await cols()).destinations.insertOne(
@@ -209,10 +233,10 @@ export async function createDestination(slug: string, input: DestinationInput): 
 }
 
 async function ownDestination(ctx: Awaited<ReturnType<typeof requireRider>>, id: string) {
-  const row = fromDoc<Destination>(await (await cols()).destinations.findOne({ _id: id, groupId: ctx.group.id, deletedAt: null }));
+  const row = await readRide(ctx.group.id, id);
   if (!row) throw new Error("Not found");
   // Rides from riders the admin removed would otherwise be stuck, so the crew looks after them.
-  const ownerGone = !ctx.riders.some((r) => r.id === row.riderId);
+  const ownerGone = rideRef(id)?.source === "destination" && !ctx.riders.some((r) => r.id === row.riderId);
   if (row.riderId !== ctx.viewer.id && !ownerGone) throw new Error("Only the rider who added this can change it");
   return row;
 }
@@ -223,7 +247,14 @@ export async function updateDestination(slug: string, id: string, input: Destina
   const valid = checkInput(input);
   if (!valid) return fail("Something's off with that place. Try finding it again.");
   const { riddenOn, ...data } = valid;
-  await (await cols()).destinations.updateOne({ _id: id }, { $set: { ...data, updatedAt: new Date() } });
+  if (process.env.DISABLE_NEW_ITINERARIES === "1" && data.itinerary && !before.itinerary) return fail("New itineraries are temporarily unavailable.");
+  if (!(await validRidePlaces(ctx.group.id, data.itinerary, before.itinerary))) return fail("A saved place is no longer available in this crew.");
+  if (input.expectedUpdatedAt && input.expectedUpdatedAt !== before.updatedAt.toISOString()) return fail("This ride changed. Reload before saving.");
+  // Old open forms cannot replace an itinerary with a single-pin route.
+  if (before.itinerary && !("itinerary" in input)) return fail("This ride now has an itinerary. Reload before saving.");
+  if (rideRef(id)?.source === "loop" && !data.itinerary) return fail("Keep at least one itinerary place.");
+  const saved = await writeRide(ctx.group.id, id, { ...data, updatedAt: new Date() }, before.updatedAt);
+  if (!saved.matchedCount) return fail("This ride changed. Reload before saving.");
   if (data.status === "planned" && (before.status !== "planned" || (data.statusDate && data.statusDate !== before.statusDate))) {
     await logActivity(ctx.log, "planned", id, data.statusDate);
   }
@@ -238,7 +269,8 @@ export async function setStatus(slug: string, id: string, status: string, date: 
   if (!STATUS_KEYS.includes(status as never) || status === "done") return fail("Unknown status.");
   if (status === "planned" && date && !validDate(date)) return fail("Pick a valid date.");
   const statusDate = status === "planned" && date ? date : null;
-  await (await cols()).destinations.updateOne({ _id: id }, { $set: { status, statusDate, updatedAt: new Date() } });
+  const saved = await writeRide(ctx.group.id, id, { status, statusDate, updatedAt: new Date() }, before.updatedAt);
+  if (!saved.matchedCount) return fail("This ride changed. Reload before saving.");
   if (status === "planned" && (before.status !== "planned" || (statusDate && statusDate !== before.statusDate))) {
     await logActivity(ctx.log, status, id, statusDate);
   }
@@ -250,7 +282,7 @@ export async function deleteDestination(slug: string, id: string): Promise<Resul
   const ctx = await requireRider(slug);
   await ownDestination(ctx, id);
   const c = await cols();
-  await c.destinations.updateOne({ _id: id }, { $set: { deletedAt: new Date() } });
+  await writeRide(ctx.group.id, id, { deletedAt: new Date() });
   await c.uploads.deleteMany({ groupId: ctx.group.id, destinationId: id });
   refresh(slug);
   return { ok: true };
@@ -262,7 +294,8 @@ export async function refreshPhotos(slug: string, id: string): Promise<Result<{ 
   const photos = await photosNear(row);
   // Keep what's there when Commons is down, rather than wiping it.
   if (photos === null) return fail("Wikimedia Commons isn't answering. Try again in a bit.");
-  await (await cols()).destinations.updateOne({ _id: id }, { $set: { photos } });
+  const saved = await writeRide(ctx.group.id, id, { photos, updatedAt: new Date() }, row.updatedAt);
+  if (!saved.matchedCount) return fail("This ride changed while finding photos. Try again.");
   refresh(slug);
   return { ok: true, count: photos.length };
 }
@@ -270,16 +303,15 @@ export async function refreshPhotos(slug: string, id: string): Promise<Result<{ 
 // ---------- Social ----------
 
 async function visibleDestination(ctx: Awaited<ReturnType<typeof requireRider>>, id: string) {
-  const row = await (await cols()).destinations.findOne(
-    { _id: id, groupId: ctx.group.id, deletedAt: null },
-    { projection: { riderId: 1 } },
-  );
-  if (!row) throw new Error("Not found");
-  return { id: row._id, riderId: row.riderId };
+  const row = await readRide(ctx.group.id, id);
+  if (!row) throw new Error("Ride not found");
+  return row;
 }
 
 async function dropActivity(ctx: Awaited<ReturnType<typeof requireRider>>, kind: string, destinationId: string) {
-  await (await cols()).activity.deleteMany({ riderId: ctx.viewer.id, kind, destinationId });
+  const ref = rideRef(destinationId);
+  const eventKind = ref?.source === "loop" && kind === "in" ? "loop-in" : kind;
+  await (await cols()).activity.deleteMany({ groupId: ctx.group.id, riderId: ctx.viewer.id, kind: eventKind, ...(ref?.source === "loop" ? { loopId: ref.id } : { destinationId }) });
 }
 
 /** Sets, changes or clears (emoji = null) the viewer's single reaction. */
@@ -303,12 +335,15 @@ export async function toggleIn(slug: string, id: string): Promise<Result<{ in: b
   const ctx = await requireRider(slug);
   await visibleDestination(ctx, id);
   const c = await cols();
-  const key = { destinationId: id, riderId: ctx.viewer.id };
-  const existing = (await c.interests.deleteOne(key)).deletedCount > 0;
+  const ref = rideRef(id)!;
+  const existing = ref.source === "loop"
+    ? (await c.loopInterests.deleteOne({ loopId: ref.id, riderId: ctx.viewer.id })).deletedCount > 0
+    : (await c.interests.deleteOne({ destinationId: id, riderId: ctx.viewer.id })).deletedCount > 0;
   if (existing) {
     await dropActivity(ctx, "in", id);
   } else {
-    await c.interests.updateOne(key, { $setOnInsert: { createdAt: new Date() } }, { upsert: true });
+    if (ref.source === "loop") await c.loopInterests.updateOne({ loopId: ref.id, riderId: ctx.viewer.id }, { $setOnInsert: { createdAt: new Date() } }, { upsert: true });
+    else await c.interests.updateOne({ destinationId: id, riderId: ctx.viewer.id }, { $setOnInsert: { createdAt: new Date() } }, { upsert: true });
     await logActivity(ctx.log, "in", id);
   }
   refresh(slug);
@@ -330,25 +365,31 @@ export async function addComment(slug: string, id: string, body: string): Promis
   await visibleDestination(ctx, id);
   const text = cleanMultiline(body, 1000);
   if (!text) return fail("Say something first.");
-  await (await cols()).comments.insertOne({
-    _id: rid(),
-    destinationId: id,
-    riderId: ctx.viewer.id,
-    body: text,
-    createdAt: new Date(),
-    deletedAt: null,
-  });
+  const ref = rideRef(id)!;
+  const c = await cols();
+  const comment = { _id: rid(), riderId: ctx.viewer.id, body: text, createdAt: new Date(), deletedAt: null };
+  if (ref.source === "loop") await c.loopComments.insertOne({ ...comment, loopId: ref.id });
+  else await c.comments.insertOne({ ...comment, destinationId: id });
   await logActivity(ctx.log, "commented", id, text.slice(0, 140));
   refresh(slug);
   return { ok: true };
 }
 
-export async function deleteComment(slug: string, commentId: string): Promise<Result> {
+export async function deleteComment(slug: string, commentId: string, parentKey?: string): Promise<Result> {
   const ctx = await requireRider(slug);
   const c = await cols();
-  const row = await c.comments.findOne({ _id: commentId });
-  if (!row || row.riderId !== ctx.viewer.id) return fail("You can only delete your own comments.");
-  await c.comments.updateOne({ _id: commentId }, { $set: { deletedAt: new Date() } });
+  const ref = parentKey ? rideRef(parentKey) : null;
+  if (parentKey && !ref) return fail("Comment not found.");
+  if (ref?.source === "loop") {
+    await visibleDestination(ctx, parentKey!);
+    const result = await c.loopComments.updateOne({ _id: commentId, loopId: ref.id, riderId: ctx.viewer.id, deletedAt: null }, { $set: { deletedAt: new Date() } });
+    if (!result.matchedCount) return fail("You can only delete your own comments.");
+  } else {
+    const row = await c.comments.findOne({ _id: commentId });
+    if (!row || row.riderId !== ctx.viewer.id || (parentKey && row.destinationId !== parentKey)) return fail("You can only delete your own comments.");
+    await visibleDestination(ctx, row.destinationId);
+    await c.comments.updateOne({ _id: commentId }, { $set: { deletedAt: new Date() } });
+  }
   refresh(slug);
   return { ok: true };
 }
@@ -463,8 +504,8 @@ export async function fillOriginRoutes(slug: string, ids: string[]): Promise<Res
   const ctx = await requireRider(slug);
   if (!ctx.viewer.start) return fail("Set your start point first.");
   if (!Array.isArray(ids) || ids.length > 3 || ids.some(id => typeof id !== "string" || id.length > 100)) return fail("Invalid rides.");
-  const rows = await (await cols()).destinations.find({ _id: { $in: ids }, groupId: ctx.group.id, deletedAt: null }).toArray();
-  await Promise.all(rows.map(d => originRoute({ id: d._id, lat: d.lat, lng: d.lng }, ctx.viewer.start!)));
+  const rows = (await Promise.all(ids.map(id => readRide(ctx.group.id, id)))).filter((d): d is Destination => !!d);
+  await Promise.all(rows.map(d => originRoute(d, ctx.viewer.start!)));
   refresh(slug);
   return { ok: true, count: rows.length };
 }
@@ -481,7 +522,8 @@ export async function logRide(slug: string, id: string, input: { date: string; r
     $set: { date: input.date, ...(riderId === ctx.viewer.id ? { note: cleanMultiline(input.note, 500) } : {}) },
     $setOnInsert: { createdAt: new Date(), ...(riderId !== ctx.viewer.id ? { loggedBy: ctx.viewer.id } : {}) },
   }, { upsert: true })));
-  await c.destinations.updateOne({ _id: id, groupId: ctx.group.id, status: "planned", statusDate: input.date }, { $set: { status: "wishlist", statusDate: null, updatedAt: new Date() } });
+  const planned = await visibleDestination(ctx, id);
+  if (planned.status === "planned" && rideEndDate(planned) === input.date) await writeRide(ctx.group.id, id, { status: "wishlist", statusDate: null, updatedAt: new Date() }, planned.updatedAt);
   await logActivity(ctx.log, "rode", id, `${input.date} · ${ids.length} rider${ids.length === 1 ? "" : "s"}`);
   const owner = await visibleDestination(ctx, id);
   if (!ids.includes(owner.riderId)) await notify(ctx.group.id, ctx.viewer.id, "rode", id, null, input.date);
@@ -508,9 +550,7 @@ export async function loadSuggestions(
 ): Promise<Result<{ stops: import("@/lib/db").SuggestedStop[] }>> {
   const ctx = await requireRider(slug);
   if (typeof id !== "string" || !id || id.length > 80) return fail("Ride not found.");
-  const row = fromDoc<Destination>(
-    await (await cols()).destinations.findOne({ _id: id, groupId: ctx.group.id, deletedAt: null }),
-  );
+  const row = await readRide(ctx.group.id, id);
   if (!row) return fail("Ride not found.");
   const stops = await suggestStops(row);
   if (!stops) return fail("OpenStreetMap's stop finder is busy. Try again in a few minutes.");
@@ -523,7 +563,7 @@ export async function addSuggestion(slug: string, id: string, suggestionId: stri
   if (typeof suggestionId !== "string" || !/^\d+$/.test(suggestionId)) return fail("Stop not found.");
   const c = await cols();
   const cached = await c.stopSuggestions.findOne({ destinationId: id });
-  const destination = await c.destinations.findOne({ _id: id, groupId: ctx.group.id, deletedAt: null });
+  const destination = await readRide(ctx.group.id, id);
   const routeKey = destination && JSON.stringify([destination.lat, destination.lng, destination.route]);
   const stop = cached?.routeKey === routeKey ? cached.stops.find((item) => item.id === suggestionId) : undefined;
   if (!stop) return fail("Stop not found. Load suggestions again.");

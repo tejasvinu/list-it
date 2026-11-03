@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { rideHref } from "@/lib/ride-model";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
@@ -140,7 +141,7 @@ export function ProfileView({
           {list.map((d, i) => (
             <motion.li key={d.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 10) * 0.03 }}>
               {tab === "ridden" && (i === 0 || (d.riddenBy.find(r => r.rider.id === rider.id)?.date ?? "").slice(0, 7) !== (list[i - 1].riddenBy.find(r => r.rider.id === rider.id)?.date ?? "").slice(0, 7)) && <h2 className="display px-1 pb-2 pt-4 text-[22px]">{(() => { const date = d.riddenBy.find(r => r.rider.id === rider.id)?.date; return date ? new Date(`${date}T00:00:00Z`).toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "UTC" }) : "Date unknown"; })()}</h2>}
-              <Link href={`/g/${slug}/d/${d.id}`} className="flex items-center gap-4 rounded-panel bg-surface p-3 pr-4 transition-colors hover:bg-surface-2">
+              <Link href={rideHref(slug, d.id)} className="flex items-center gap-4 rounded-panel bg-surface p-3 pr-4 transition-colors hover:bg-surface-2">
                 <span className="h-16 w-16 shrink-0 overflow-hidden rounded-[4px]">
                   <RouteArt id={`p-${tab}-${d.id}`} route={d.route} category={d.category} width={64} height={64} labels={false} animate={false} className="h-full w-full" />
                 </span>

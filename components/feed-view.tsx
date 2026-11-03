@@ -1,19 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { FeedSwitch } from "./feed-switch";
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { UserPlus } from "lucide-react";
 import { AvatarStack } from "./avatar";
 import { CompactCard, FeedCard } from "./feed-card";
-import { CompactLoopCard, LoopCard } from "./loop-card";
 import { Milestone } from "./milestone";
 import { shareLink } from "./toast";
 import { CATEGORIES } from "@/lib/config";
+import { rideHref, rideEndDate, overlapsDates } from "@/lib/ride-model";
 import { daysUntil, prettyDate, weekendDates } from "@/lib/format";
 import type { FeedItem } from "@/lib/data";
-import type { LoopItem } from "@/lib/loop-data";
 import type { RiderLite } from "@/lib/types";
 
 // Ride length is the main question; status and history are separate toggles.
@@ -22,7 +20,6 @@ const LENGTHS = [
   { key: "short", label: "Short", dot: CATEGORIES.short.color },
   { key: "day", label: "Day ride", dot: CATEGORIES.day.color },
   { key: "multi", label: "Multi-day", dot: CATEGORIES.multi.color },
-  { key: "loops", label: "Loops" },
 ] as const;
 type LengthKey = (typeof LENGTHS)[number]["key"];
 type Only = "none" | "done" | "hailmary" | "weekend";
@@ -37,7 +34,7 @@ type SortKey = (typeof SORTS)[number]["key"];
 const heat = (d: FeedItem) => d.reactions.length + d.commentCount * 2 + d.interested.length * 3;
 
 /** Rides and loops share the feed. */
-type Entry = { kind: "ride"; item: FeedItem; at: number; heat: number } | { kind: "loop"; loop: LoopItem; at: number; heat: number };
+type Entry = { kind: "ride"; item: FeedItem; at: number; heat: number };
 
 const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
@@ -45,7 +42,6 @@ export function FeedView({
   slug,
   groupName,
   items,
-  loops,
   forecasts,
   riders,
   me,
@@ -55,7 +51,6 @@ export function FeedView({
   slug: string;
   groupName: string;
   items: FeedItem[];
-  loops: LoopItem[];
   forecasts: Record<string, React.ReactNode>;
   riders: RiderLite[];
   me: RiderLite;
@@ -84,16 +79,16 @@ export function FeedView({
   const upcoming = useMemo(
     () =>
       items
-        .filter((d) => d.status === "planned" && d.statusDate && daysUntil(d.statusDate) >= 0)
+        .filter((d) => d.status === "planned" && d.statusDate && daysUntil(rideEndDate(d)!) >= 0)
         .sort((a, b) => a.statusDate!.localeCompare(b.statusDate!)),
     [items],
   );
 
   const shown = useMemo(() => {
     let xs = items.filter((d) => {
-      if (!`${d.name} ${d.area ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())) return false;
+      if (!`${d.name} ${d.area ?? ""} ${d.itinerary?.stops.map(stop => stop.name).join(" ") ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())) return false;
       if (length !== "all" && d.category !== length) return false;
-      if (only === "weekend") return d.status === "planned" && !!d.statusDate && weekendDates(now).includes(d.statusDate);
+      if (only === "weekend") return overlapsDates(d, weekendDates(now));
       if (only === "done") return d.riddenBy.length > 0;
       if (only === "hailmary") return d.status === "hailmary";
       return true;
@@ -103,26 +98,11 @@ export function FeedView({
     return xs;
   }, [items, length, only, sort, query, now]);
 
-  // Loops have no length, history or Hail Mary, so only "All rides", "Loops" and "This weekend" show them.
-  const shownLoops = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return loops.filter((l) => {
-      if (length !== "all" && length !== "loops") return false;
-      if (!`${l.name} ${l.stops.map((s) => s.name).join(" ")}`.toLowerCase().includes(q)) return false;
-      if (only === "weekend") return !!l.startDate && weekendDates(now).includes(l.startDate);
-      return only === "none";
-    });
-  }, [loops, length, only, query, now]);
-
   const entries = useMemo(() => {
-    const all: Entry[] = [
-      ...shown.map((item) => ({ kind: "ride" as const, item, at: new Date(item.createdAt).getTime(), heat: heat(item) })),
-      ...shownLoops.map((loop) => ({ kind: "loop" as const, loop, at: new Date(loop.createdAt).getTime(), heat: loop.interested.length * 3 })),
-    ];
-    // Rides are already in distance order, and a loop has no single distance from you, so loops go last.
+    const all: Entry[] = shown.map(item => ({ kind: "ride", item, at: new Date(item.createdAt).getTime(), heat: heat(item) }));
     if (sort === "near") return all;
-    return all.sort((a, b) => (sort === "hot" ? b.heat - a.heat : b.at - a.at));
-  }, [shown, shownLoops, sort]);
+    return all.sort((a, b) => sort === "hot" ? b.heat - a.heat : b.at - a.at);
+  }, [shown, sort]);
 
   const ridden = items.filter((d) => d.riddenBy.length > 0);
   const toGoKm = items.filter((d) => !d.riddenBy.length).reduce((s, d) => s + d.distanceKm, 0);
@@ -154,7 +134,6 @@ export function FeedView({
             </motion.button>
           )}
         </div>
-        <FeedSwitch slug={slug} current="rides" />
       </header>
 
       {items.length > 0 && !filtered && (
@@ -174,12 +153,12 @@ export function FeedView({
               return (
                 <Link
                   key={d.id}
-                  href={`/g/${slug}/d/${d.id}`}
+                  href={rideHref(slug, d.id)}
                   className="flex w-[290px] shrink-0 snap-start items-center gap-4 rounded-panel bg-accent p-4 text-on-accent transition-transform active:scale-[0.99]"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block text-[14px] font-semibold">
-                      {days === 0 ? "Today" : days === 1 ? "Tomorrow" : `In ${days} days`}, {prettyDate(d.statusDate!)}
+                      {days < 0 ? "Under way" : days === 0 ? "Today" : days === 1 ? "Tomorrow" : `In ${days} days`}, {prettyDate(d.statusDate!)}
                     </span>
                     <span className="display mt-1 block truncate text-[28px]">{d.name}</span>
                     <span className="mt-2 flex items-center gap-2 text-[14px]">
@@ -202,7 +181,7 @@ export function FeedView({
       )}
 
       <section aria-label="Filter rides" className="mt-8 space-y-3">
-        <div className="px-4 lg:px-0"><input type="search" aria-label="Search rides and loops by name or area" placeholder="Search rides, loops or areas" value={query} onChange={(e) => setQuery(e.target.value)} className="field" /></div>
+        <div className="px-4 lg:px-0"><input type="search" aria-label="Search rides by name, area or itinerary place" placeholder="Search rides, places or areas" value={query} onChange={(e) => setQuery(e.target.value)} className="field" /></div>
         <div className="no-scrollbar flex gap-2 overflow-x-auto px-4 lg:px-0">
           {LENGTHS.map((f) => (
             <button key={f.key} aria-pressed={length === f.key} onClick={() => setLength(f.key)} className="chip shrink-0">
@@ -226,9 +205,7 @@ export function FeedView({
         <div className="flex items-center justify-between gap-3 px-4 lg:px-0">
           <div className="flex min-h-11 items-center gap-3 whitespace-nowrap text-[15px]">
             <span className="num font-semibold">
-              {shownLoops.length && !shown.length
-                ? count(shownLoops.length, "loop")
-                : `${count(shown.length, "ride")}${shownLoops.length ? ` · ${count(shownLoops.length, "loop")}` : ""}`}
+              {count(shown.length, "ride")}
             </span>
             <select
               value={sort}
@@ -267,16 +244,14 @@ export function FeedView({
         <AnimatePresence mode="popLayout" initial={false}>
           {entries.map((entry, i) => (
             <motion.div
-              key={entry.kind === "ride" ? entry.item.id : `loop-${entry.loop.id}`}
+              key={entry.item.id}
               layout
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ type: "spring", stiffness: 400, damping: 36 }}
             >
-              {entry.kind === "loop" ? (
-                compact ? <CompactLoopCard loop={entry.loop} slug={slug} /> : <LoopCard loop={entry.loop} slug={slug} me={me} />
-              ) : compact ? (
+              {compact ? (
                 <CompactCard item={entry.item} slug={slug} me={me} forecast={forecasts[entry.item.id]} />
               ) : (
                 <FeedCard item={entry.item} slug={slug} me={me} priority={i < 2} forecast={forecasts[entry.item.id]} />
@@ -288,13 +263,13 @@ export function FeedView({
 
       {entries.length === 0 && (
         <div className="px-4 py-16 lg:px-0">
-          <p className="display text-[30px]">{items.length || loops.length ? "Nothing matches" : "The list is empty"}</p>
+          <p className="display text-[30px]">{items.length ? "Nothing matches" : "The list is empty"}</p>
           <p className="mt-2 max-w-[38ch] text-[16px] text-muted">
-            {items.length || loops.length
+            {items.length
               ? "Try another search or filter."
               : "Paste a Google Maps link and the round trip from Bengaluru is worked out for you."}
           </p>
-          {items.length || loops.length ? (
+          {items.length ? (
             <button
               className="btn btn-line mt-6"
               onClick={() => {
