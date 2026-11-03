@@ -1,6 +1,6 @@
 # list-it
 
-A private, phone-first ride list for riding crews. Paste a Google Maps link to see the round trip, road mix, photos and route. Plan rides and multi-day loops with your crew, add stops, and keep a ride log.
+A private, phone-first ride list for riding crews. Paste a Google Maps link to see the round trip, road mix, photos and route. Plan single-place or multi-day rides with your crew, add an itinerary and stops, and keep a ride log.
 
 No accounts. Each crew lives at a secret link. Anyone with the link can join with a name and a 4-digit PIN for **3 days**, then joining closes. After that the admin adds people and resets PINs from `/admin`.
 
@@ -14,8 +14,8 @@ No accounts. Each crew lives at a secret link. Anyone with the link can join wit
 | Ownership | Only the rider who added a ride can edit it, change its status or delete it. Everyone can react, comment, say "I'm in" and add stops. |
 | Location | Short and long Google Maps links, whole WhatsApp messages containing one, plus codes (`26X6+737 …`), or plain `lat, lng`. Falls back to OpenStreetMap search. If the pin lands wrong, drag it on the preview map. |
 | Distance | Bengaluru → destination → Bengaluru using OSRM, with road mix. Set your own start area for a personal round trip. |
-| Loops | Chain rides or other places, split the trip into days, and see the route and overnight forecasts. |
-| Planning | Search rides, see this weekend, share, add planned rides or loops to a calendar, and say "I'm in". |
+| Itineraries | Add several places to any ride, reorder them, stay overnight, and see the route, day splits and overnight forecasts. Existing loops use the same ride screens and retain their original links and history. |
+| Planning | Search rides, see this weekend, share, add planned rides to a calendar, and say "I'm in". |
 | Stops | Add stops yourself or request OpenStreetMap suggestions along the outbound route. |
 | Ride log | Record who rode, when, and personal notes; see each rider's history. |
 | Weather | Forecasts from Open-Meteo and seasonal hints, including monsoon warnings for ghat roads. |
@@ -55,12 +55,20 @@ The 3-day joining window starts when the crew is created in `/admin`. "Extend 3 
 
 ## What's new in v2
 
-Set a personal start area, build multi-day loops, log rides and rider photos, see forecasts, find suggested stops, and follow crew activity through in-app notifications. Share a weekly WhatsApp digest or add planned trips to your calendar. The feed can search by place, show this weekend and sort by cached distances from your area.
+Set a personal start area, build multi-day ride itineraries, log rides and rider photos, see forecasts, find suggested stops, and follow crew activity through in-app notifications. Share a weekly WhatsApp digest or add planned trips to your calendar. The feed can search by place, show this weekend and sort by cached distances from your area.
+
+## One ride experience
+
+Rides and existing loops now share the feed, creator, detail screen, map, profiles and ride features. Use **Add a ride** for a single place or an itinerary with overnight stays. **Use in a ride** adds an individual place to a new or existing itinerary after review.
+
+No record conversion or index migration is required. Existing destinations, loops, attendance, comments, photos and completion logs stay in place; original detail/edit/share/calendar links remain valid. New itineraries are optional fields on destinations. New legacy-loop attachments use internal `loop:<id>` relationship keys, which cannot collide with generated destination IDs and preserve the existing unique indexes and crew photo quota.
+
+For a staged rollout, `DISABLE_NEW_ITINERARIES=1` prevents new itineraries and adding one to a single-place ride, while retaining read/edit support for saved itineraries. Keep this compatibility code when rolling back; an older binary can discard itinerary routes during route refresh. See `docs/ride-unification-implementation.md` for checks and limitations.
 
 ## Roadmap
 
 - Web push and an email digest, which need additional services or keys.
 - Blob photo storage if a crew outgrows the MongoDB photo limits.
 - A self-hosted or paid Overpass instance if the public servers stay unreliable. Stop suggestions use the free public ones, which refused or timed out on every request while v2 was being tested.
-- Drag to reorder loop stops (up and down buttons for now).
+- Drag to reorder itinerary places (up and down buttons for now).
 - Re-route production rides saved before the road-split fix: "Refresh routes" on each crew's admin page.

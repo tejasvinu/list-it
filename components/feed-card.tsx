@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { rideHref } from "@/lib/ride-model";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
@@ -87,7 +88,7 @@ export function RideFacts({ item, className = "" }: { item: Pick<FeedItem, "dura
 
 export function FeedCard({ item, slug, me, priority, forecast }: { item: FeedItem; slug: string; me: RiderLite; priority?: boolean; forecast?: React.ReactNode }) {
   const router = useRouter();
-  const href = `/g/${slug}/d/${item.id}`;
+  const href = rideHref(slug, item.id);
   const { state, set } = useReactions(slug, item.id, me, { mine: item.myReaction, list: item.reactions });
   const [burst, setBurst] = useState(0);
   const [slide, setSlide] = useState(0);
@@ -124,7 +125,7 @@ export function FeedCard({ item, slug, me, priority, forecast }: { item: FeedIte
           onClick={onMediaTap}
         >
           <div className="relative h-full w-full shrink-0 snap-center">
-            <RouteArt id={item.id} route={item.route} category={item.category} width={520} height={358} map className="h-full w-full" />
+            <RouteArt id={item.id} start={item.itinerary?.start} route={item.route} category={item.category} width={520} height={358} map className="h-full w-full" />
           </div>
           {item.photos.map((p, i) => (
             <div key={p.thumb} className="relative h-full w-full shrink-0 snap-center bg-surface-2">
@@ -257,11 +258,11 @@ export function FeedCard({ item, slug, me, priority, forecast }: { item: FeedIte
 export function CompactCard({ item, slug, me, forecast }: { item: FeedItem; slug: string; me: RiderLite; forecast?: React.ReactNode }) {
   return (
     <Link
-      href={`/g/${slug}/d/${item.id}`}
+      href={rideHref(slug, item.id)}
       className="flex items-center gap-4 rounded-panel bg-surface p-3 pr-4 transition-colors hover:bg-surface-2 active:scale-[0.995]"
     >
       <span className="relative h-[76px] w-[76px] shrink-0 overflow-hidden rounded-[4px]">
-        <RouteArt id={`c-${item.id}`} route={item.route} category={item.category} width={76} height={76} labels={false} animate={false} className="h-full w-full" />
+        <RouteArt id={`c-${item.id}`} start={item.itinerary?.start} route={item.route} category={item.category} width={76} height={76} labels={false} animate={false} className="h-full w-full" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="display block truncate text-[24px]">{item.name}</span>

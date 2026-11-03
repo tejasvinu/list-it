@@ -30,7 +30,7 @@ import {
   setStatus,
 } from "@/app/g/[slug]/actions";
 import { SEASONS, STATUS_KEYS, STATUSES, STOP_KIND_KEYS, STOP_KINDS, tagLabel, type Season, type StopKind } from "@/lib/config";
-import { categoryOf, duration, googleMapsPlace, googleMapsRoute, km, prettyDate, timeAgo } from "@/lib/format";
+import { categoryOf, duration, googleMapsPlace, km, prettyDate, timeAgo } from "@/lib/format";
 import type { DestinationDetail } from "@/lib/data";
 import type { SuggestedStop } from "@/lib/db";
 import type { RiderLite } from "@/lib/types";
@@ -40,21 +40,25 @@ import { Milestone } from "./milestone";
 import { RoadSplitBar } from "./road-split";
 import { Sheet } from "./sheet";
 import { InButton, ReactionButton, ReactionSummary, useReactions } from "./social";
+import { rideHref, rideRef, rideMaps, rideDays } from "@/lib/ride-model";
+import { RideItinerary } from "./ride-itinerary";
 import { AddToLoop } from "./add-to-loop";
 import { RideLog } from "./ride-log";
 import { RiderPhotos } from "./rider-photos";
 
 import { attempt, shareLink, toast } from "./toast";
 
+const LoopMap = dynamic(() => import("./maps").then(m => m.LoopMap), { ssr: false, loading: () => <div className="skeleton h-full w-full" /> });
+
 const RouteMap = dynamic(() => import("./maps").then((m) => m.RouteMap), {
   ssr: false,
   loading: () => <div className="skeleton h-full w-full" />,
 });
 
-export function DestinationView({ d, slug, me, riders, originSlot, weatherSlot, loops }: { d: DestinationDetail; slug: string; me: RiderLite; riders: RiderLite[]; originSlot: React.ReactNode; weatherSlot: React.ReactNode; loops: { id: string; name: string }[] }) {
+export function DestinationView({ d, slug, me, riders, originSlot, weatherSlot, loops, itineraryWeather = [], livePlaceIds = [] }: { d: DestinationDetail; slug: string; me: RiderLite; riders: RiderLite[]; originSlot: React.ReactNode; weatherSlot: React.ReactNode; loops: { id: string; name: string }[]; itineraryWeather?: React.ReactNode[]; livePlaceIds?: string[] }) {
   const router = useRouter();
   // Rides from removed riders can be looked after by anyone, or nobody could ever change them.
-  const mine = d.owner.id === me.id || d.ownerGone;
+  const mine = d.canEdit;
   const { state, set } = useReactions(slug, d.id, me, { mine: d.myReaction, list: d.reactions });
   const [suggestions, setSuggestions] = useState<SuggestedStop[]>([]);
   const [menu, setMenu] = useState(false);
@@ -64,12 +68,14 @@ export function DestinationView({ d, slug, me, riders, originSlot, weatherSlot, 
   const ownerRide = d.riddenBy.find((r) => r.rider.id === d.owner.id);
 
   const share = () =>
-    shareLink({ title: d.name, text: `${d.name}: ${km(d.distanceKm)} round trip from Bengaluru${d.statusDate ? ` · ${prettyDate(d.statusDate)}` : ""}`, url: location.href, whatsappFallback: true });
+    shareLink({ title: d.name, text: `${d.name}: ${km(d.distanceKm)} round trip${d.itinerary ? ` from ${d.itinerary.start.name}` : " from Bengaluru"}${d.statusDate ? ` · ${prettyDate(d.statusDate)}` : ""}`, url: location.href, whatsappFallback: true });
 
   return (
     <div className="pb-10 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,600px)] lg:pb-0">
       <div className="relative h-[25dvh] min-h-[160px] bg-surface-2 lg:sticky lg:top-0 lg:h-dvh">
-        <RouteMap route={d.route} category={d.category} dest={d} stops={[...d.stops, ...suggestions.filter((suggestion) => !d.stops.some((stop) => stop.kind === suggestion.kind && stop.lat === suggestion.lat && stop.lng === suggestion.lng))]} className="h-full w-full" />
+        {d.itinerary ? <LoopMap start={d.itinerary.start} stops={d.itinerary.stops} legs={d.itinerary.legs} poiStops={[...d.stops, ...suggestions.filter(s => !d.stops.some(stop => stop.kind === s.kind && stop.lat === s.lat && stop.lng === s.lng))]} className="h-full w-full" /> :
+        <RouteMap route={d.route} category={d.category} dest={d} stops={[...d.stops, ...suggestions.filter((suggestion) => !d.stops.some((stop) => stop.kind === suggestion.kind && stop.lat === suggestion.lat && stop.lng === suggestion.lng))]} className="h-full w-full" />}
+
         <div className="pointer-events-none absolute inset-x-0 top-0 z-[500] flex justify-between p-3 pt-[max(env(safe-area-inset-top),12px)]">
           <button
             onClick={() => (history.length > 1 ? router.back() : router.push(`/g/${slug}`))}
@@ -81,7 +87,7 @@ export function DestinationView({ d, slug, me, riders, originSlot, weatherSlot, 
           <div className="pointer-events-auto flex gap-2">
             {mine && (
               <Link
-                href={`/g/${slug}/d/${d.id}/edit?from=ride`}
+                href={`${rideHref(slug, d.id)}/edit?from=ride`}
                 className="float flex h-11 items-center gap-2 rounded-full bg-surface px-4 text-[15px] font-semibold text-text"
               >
                 <Pencil size={16} /> Edit ride
@@ -119,8 +125,8 @@ export function DestinationView({ d, slug, me, riders, originSlot, weatherSlot, 
         </div>
 
         <dl className="num mt-4 grid grid-cols-2 gap-x-6 gap-y-2">
-          <Fact label="Round trip" value={km(d.distanceKm)} sub={d.approx ? "Rough estimate" : "Bengaluru and back"} />
-          <Fact label="Riding time" value={duration(d.durationMin)} sub={`About ${duration(d.durationMin / 2)} each way`} />
+          <Fact label="Round trip" value={km(d.distanceKm)} sub={d.approx ? "Rough estimate" : `${d.itinerary?.start.name ?? "Bengaluru"} and back`} />
+          <Fact label="Riding time" value={duration(d.durationMin)} sub={d.itinerary ? `${rideDays(d)} ${rideDays(d) === 1 ? "day" : "days"} · without stops` : `About ${duration(d.durationMin / 2)} each way`} />
           <Fact label="Hairpins" value={d.hairpins ? String(d.hairpins) : "Not counted"} muted={!d.hairpins} />
           <Fact label="Ride type" value={cat.short} sub={cat.hint} dot={cat.color} />
         </dl>
@@ -128,9 +134,9 @@ export function DestinationView({ d, slug, me, riders, originSlot, weatherSlot, 
         {originSlot}
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <InButton slug={slug} id={d.id} me={me} imIn={d.imIn} interested={d.interested} />
-          <AddToLoop slug={slug} rideId={d.id} loops={loops} />
-          {d.status === "planned" && d.statusDate && <a href={`/g/${slug}/calendar/ride/${d.id}`} className="btn btn-line">Add to calendar</a>}
-          <a href={googleMapsRoute(d.lat, d.lng)} target="_blank" rel="noreferrer" className="btn btn-line">
+          <AddToLoop slug={slug} rideId={d.id} loops={loops} places={d.itinerary?.stops} />
+          {d.status === "planned" && d.statusDate && <a href={`/g/${slug}/calendar/${rideRef(d.id)!.source === "loop" ? "loop" : "ride"}/${rideRef(d.id)!.id}`} className="btn btn-line">Add to calendar</a>}
+          <a href={rideMaps(d)} target="_blank" rel="noreferrer" className="btn btn-line">
             <Navigation size={16} /> Route in Maps
           </a>
         </div>
@@ -145,7 +151,7 @@ export function DestinationView({ d, slug, me, riders, originSlot, weatherSlot, 
           )}{" "}
           {d.ownerGone ? (
             <span className="text-faint" suppressHydrationWarning>
-              Added by a former rider {timeAgo(d.createdAt)} ago. Anyone in the crew can edit it.
+              Added by a former rider {timeAgo(d.createdAt)} ago.{d.canEdit ? " Anyone in the crew can edit it." : ""}
             </span>
           ) : (
             <Link href={`/g/${slug}/r/${d.owner.id}`} className="text-faint hover:text-text" suppressHydrationWarning>
@@ -191,6 +197,8 @@ export function DestinationView({ d, slug, me, riders, originSlot, weatherSlot, 
             <p className="max-w-[62ch] whitespace-pre-wrap text-[17px] leading-relaxed">{d.notes}</p>
           </section>
         )}
+
+        {d.itinerary && <RideItinerary slug={slug} itinerary={d.itinerary} date={d.statusDate} weather={itineraryWeather} liveIds={livePlaceIds} />}
 
         {ownerRide && (
           <section className="mt-10 border-l-[3px] border-good pl-4">
@@ -579,7 +587,7 @@ function Comments({ d, slug, me }: { d: DestinationDetail; slug: string; me: Rid
               </div>
               {c.riderId === me.id && (
                 <button
-                  onClick={() => confirm("Delete this comment?") && start(async () => void (await attempt(() => deleteComment(slug, c.id))))}
+                  onClick={() => confirm("Delete this comment?") && start(async () => void (await attempt(() => deleteComment(slug, c.id, d.id))))}
                   className="grid h-9 w-9 place-items-center self-start rounded-full text-faint hover:bg-surface-2 hover:text-danger"
                   aria-label="Delete comment"
                 >

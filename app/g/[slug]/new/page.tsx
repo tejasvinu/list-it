@@ -1,11 +1,6 @@
-import { getGroupContext } from "@/lib/data";
-import { DestinationForm } from "@/components/destination-form";
-
+import { RideEditorPage } from "@/components/ride-editor-page";
 export const metadata = { title: "New ride" };
-
-export default async function NewPage({ params }: PageProps<"/g/[slug]/new">) {
+export default async function NewPage({ params, searchParams }: PageProps<"/g/[slug]/new">) {
   const { slug } = await params;
-  const ctx = await getGroupContext(slug);
-  if (!ctx.viewer) return null;
-  return <DestinationForm slug={slug} />;
+  return <RideEditorPage slug={slug} query={await searchParams} />;
 }

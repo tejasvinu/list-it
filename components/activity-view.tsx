@@ -13,7 +13,7 @@ function describe(a: ActivityItem) {
   const dest = <span className="font-semibold">{a.destName}</span>;
   switch (a.kind) {
     case "loop-added":
-      return <>added a loop, <span className="font-semibold">{a.loopName}</span></>;
+      return <>added a ride, <span className="font-semibold">{a.loopName}</span></>;
     case "loop-commented":
       return <>on <span className="font-semibold">{a.loopName}</span>: {a.detail}</>;
     case "loop-in":
@@ -145,7 +145,7 @@ export function ActivityView({
               return (
                 <li key={a.id}>
                   {a.loopId ? (
-                    <Link href={`/g/${slug}/loops/${a.loopId}`}>{row}</Link>
+                    <Link href={`/g/${slug}/loops/${a.loopId}${a.kind === "loop-commented" ? "#comments" : a.kind === "stop" ? "#stops" : ""}`}>{row}</Link>
                   ) : a.destinationId ? (
                     <Link href={`/g/${slug}/d/${a.destinationId}${a.kind === "commented" ? "#comments" : a.kind === "stop" ? "#stops" : ""}`}>{row}</Link>
                   ) : (

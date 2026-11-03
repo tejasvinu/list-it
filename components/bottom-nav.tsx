@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "./toast";
-import { Sheet } from "./sheet";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { Bell, Map, Plus, Rows3 } from "lucide-react";
@@ -25,7 +24,6 @@ export function BottomNav({
 }) {
   const path = usePathname();
   const router = useRouter();
-  const [choose, setChoose] = useState(false);
   const [hasNotifications, setHasNotifications] = useState(unread);
   const latest = useRef<string | null | undefined>(undefined);
   useEffect(() => {
@@ -97,14 +95,6 @@ export function BottomNav({
             <li key={item.label} className={`flex-1 lg:flex-none ${item.plus ? "lg:hidden" : ""}`}>
               <Link
                 href={item.href}
-                onClick={
-                  item.plus
-                    ? (e) => {
-                        e.preventDefault();
-                        setChoose(true);
-                      }
-                    : undefined
-                }
                 aria-label={item.label}
                 aria-current={item.active ? "page" : undefined}
                 className={`group relative flex h-full flex-col items-center justify-center gap-1 transition-colors lg:h-11 lg:flex-row lg:justify-start lg:gap-3 lg:rounded-full lg:px-3 ${
@@ -154,22 +144,10 @@ export function BottomNav({
             <Link href={`${base}/new`} className="btn btn-ink w-full">
               <Plus size={20} /> Add a ride
             </Link>
-            <Link href={`${base}/loops/new`} className="btn btn-line mt-2 w-full">
-              Add a loop
-            </Link>
           </li>
         </ul>
       </nav>
-      <Sheet open={choose} onClose={() => setChoose(false)} title="What are you adding?">
-        <div className="flex flex-col gap-3">
-          <Link href={`${base}/new`} onClick={() => setChoose(false)} className="btn btn-ink">
-            Add a ride
-          </Link>
-          <Link href={`${base}/loops/new`} onClick={() => setChoose(false)} className="btn btn-line">
-            Add a loop
-          </Link>
-        </div>
-      </Sheet>
+
     </>
   );
 }

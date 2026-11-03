@@ -40,3 +40,13 @@ test("stop query samples only the outbound route and caps long routes", () => {
   assert.match(query, /out body qt;/);
   assert.equal(buildStopQuery([], { lat: 15, lng: 77 }).query, "");
 });
+
+test("itinerary suggestions cover later places and the return leg within the same query budget", () => {
+  const route: [number, number][] = [[12, 77], [12.2, 77], [12.2, 77.5], [12, 77]];
+  const single = buildStopQuery(route, { lat: 12.2, lng: 77 });
+  const itinerary = buildStopQuery(route, { lat: 12.2, lng: 77, fullRoute: true });
+  assert.ok(itinerary.samples.some(point => point.lng > 77.3));
+  assert.ok(!single.samples.some(point => point.lng > 77.3));
+  assert.ok(itinerary.samples.at(-1)!.km > single.samples.at(-1)!.km);
+  assert.ok(itinerary.samples.length <= 40);
+});

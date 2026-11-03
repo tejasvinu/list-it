@@ -26,6 +26,10 @@ import {
   updateDestination,
   type Preview,
 } from "@/app/g/[slug]/actions";
+import { ItineraryEditor, type SavedPlace } from "./itinerary-editor";
+import { rideHref } from "@/lib/ride-model";
+import { HOME } from "@/lib/config";
+import type { LoopStop, StartPoint } from "@/lib/types";
 import type { DestinationInput } from "@/lib/validate";
 import {
   CATEGORIES,
@@ -74,12 +78,22 @@ export function DestinationForm({
   editId,
   backToRide = false,
   initial,
+  rides = [],
+  start = HOME,
+  appendStop,
+  hasRidden = false,
+  allowNewItineraries = true,
 }: {
   slug: string;
   editId?: string;
   /** Opened from the ride page, so the ride is the previous history entry */
   backToRide?: boolean;
-  initial?: { preview: Preview; name: string; details: Details };
+  initial?: { preview: Preview; name: string; details: Details; expectedUpdatedAt?: string };
+  rides?: SavedPlace[];
+  start?: StartPoint;
+  appendStop?: LoopStop;
+  hasRidden?: boolean;
+  allowNewItineraries?: boolean;
 }) {
   const router = useRouter();
   const [preview, setPreview] = useState<Preview | null>(initial?.preview ?? null);
@@ -98,9 +112,13 @@ export function DestinationForm({
   );
   const [saving, startSave] = useTransition();
   const [moving, setMoving] = useState(false);
+  const [locationVersion, setLocationVersion] = useState(0);
+  const [itineraryPending, setItineraryPending] = useState(!!appendStop);
   const [error, setError] = useState<string | null>(null);
 
   const onFound = (p: Preview) => {
+    setLocationVersion(version => version + 1);
+    setItineraryPending(false);
     setPreview(p);
     setName(p.name);
     if (!editId) setDetails((d) => ({ ...d, category: p.suggested }));
@@ -123,11 +141,11 @@ export function DestinationForm({
   /** Back to the ride without leaving the form in history, so Back from the ride doesn't reopen it. */
   const leaveEdit = () => {
     if (backToRide) router.back();
-    else router.replace(`/g/${slug}/d/${editId}`);
+    else router.replace(rideHref(slug, editId!));
   };
 
   const save = () => {
-    if (!preview) return;
+    if (!preview || itineraryPending || moving) return;
     setError(null);
     const input: DestinationInput = {
       name: name.trim() || preview.name,
@@ -141,6 +159,8 @@ export function DestinationForm({
       route: preview.route,
       roadSplit: preview.roadSplit,
       seal: preview.seal,
+      itinerary: preview.itinerary ?? null,
+      expectedUpdatedAt: initial?.expectedUpdatedAt,
       photos: preview.photos,
       ...details,
     };
@@ -189,11 +209,11 @@ export function DestinationForm({
           <motion.button
             whileTap={{ scale: 0.95 }}
             onClick={save}
-            disabled={saving}
+            disabled={saving || itineraryPending || moving}
             className="btn btn-ink !min-h-10"
           >
             {saving && <Loader2 size={16} className="animate-spin" />}
-            {editId ? "Save changes" : "Post to the crew"}
+            {editId ? "Save changes" : "Save ride"}
           </motion.button>
         )}
       </header>
@@ -206,6 +226,7 @@ export function DestinationForm({
         ) : (
           <motion.div key="details" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mx-auto max-w-[720px] pb-28">
             <section className="relative h-[260px] bg-surface-2 lg:mt-6 lg:overflow-hidden lg:rounded-panel">
+              {preview.itinerary ? <RouteArt id="itinerary-preview" route={preview.route} category={details.category} start={preview.itinerary.start} map width={720} height={260} className="h-full w-full" /> : (
               <PickMap
                 lat={preview.lat}
                 lng={preview.lng}
@@ -214,8 +235,9 @@ export function DestinationForm({
                 onMove={movePin}
                 className="h-full w-full"
               />
+              )}
               <span className="float pointer-events-none absolute left-3 top-3 z-[500] rounded-[3px] bg-surface px-2.5 py-1.5 text-[14px] font-medium text-text">
-                {moving ? "Re-routing…" : "Pin off? Drag it to the right spot"}
+                {moving ? "Re-routing…" : preview.itinerary ? "Edit the places below to change this route" : "Pin off? Drag it to the right spot"}
               </span>
               {moving && (
                 <div className="absolute inset-0 z-[600] grid place-items-center bg-[var(--scrim)]">
@@ -225,7 +247,7 @@ export function DestinationForm({
             </section>
 
             <section className="space-y-8 px-4 pt-6 lg:px-0">
-              {editId && (
+              {editId && !preview.itinerary && (
                 <button
                   onClick={() => setPreview(null)}
                   className="flex min-h-11 items-center gap-1.5 text-[15px] font-semibold underline decoration-line-strong underline-offset-4"
@@ -237,7 +259,7 @@ export function DestinationForm({
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  maxLength={60}
+                  maxLength={80}
                   aria-label="Ride name"
                   className="display w-full rounded-[4px] bg-transparent text-[44px] outline-none placeholder:text-faint"
                   placeholder="Name this place"
@@ -248,7 +270,7 @@ export function DestinationForm({
               <div className="flex items-end gap-6">
                 <Milestone name={name || preview.name} distanceKm={preview.distanceKm} split={preview.roadSplit} approx={preview.approx} size={15} />
                 <dl className="num grid flex-1 grid-cols-2 gap-x-6 gap-y-3">
-                  <Metric label="Round trip" value={km(preview.distanceKm)} sub={preview.approx ? "Rough estimate" : "Bengaluru and back"} />
+                  <Metric label="Round trip" value={km(preview.distanceKm)} sub={preview.approx ? "Rough estimate" : `${preview.itinerary?.start.name ?? "Bengaluru"} and back`} />
                   <Metric label="Riding time" value={duration(preview.durationMin)} sub="Without stops" />
                 </dl>
               </div>
@@ -295,6 +317,8 @@ export function DestinationForm({
                 </Field>
               )}
 
+              {!!preview.importNotes?.length && <p role="status" className="rounded-panel bg-surface p-4 text-[15px] text-muted">Route import: {preview.importNotes.join("; ")}. Check the places below and add anything missing before saving.</p>}
+
               <Field label="What kind of ride?">
                 <div className="grid grid-cols-3 gap-2">
                   {CATEGORY_KEYS.map((c) => {
@@ -317,6 +341,12 @@ export function DestinationForm({
                   })}
                 </div>
               </Field>
+
+              {(allowNewItineraries || preview.itinerary) && <ItineraryEditor key={locationVersion} slug={slug} editId={editId} preview={preview} rides={rides} start={start} appendStop={appendStop}
+                onPending={setItineraryPending} onPreview={next => {
+                  setPreview(current => ({ ...next, photos: current?.photos ?? next.photos }));
+                  if (next.suggested === "multi") setDetails(current => ({ ...current, category: "multi" }));
+                }} />}
 
               <Field label="Status">
                 <div className="flex flex-wrap gap-2">
@@ -348,7 +378,7 @@ export function DestinationForm({
                     />
                   </label>
                 )}
-                {details.status === "done" && (
+                {(details.status === "done" || hasRidden || !!details.rideReport) && (
                   <textarea
                     value={details.rideReport}
                     onChange={(e) => setDetails({ ...details, rideReport: e.target.value })}
@@ -516,7 +546,7 @@ function Finder({ slug, onFound }: { slug: string; onFound: (p: Preview) => void
     <div className="mx-auto max-w-[560px] px-4 pt-8">
       <h2 className="display text-[56px] leading-[0.9]">Where to?</h2>
       <p className="mt-3 max-w-[40ch] text-[17px] text-muted">
-        Paste a Google Maps link. The round trip from Bengaluru, riding time, road mix and nearby photos are worked out for you.
+        Paste a place or directions link. Preview the round trip, then add more places or overnight stays in the same ride.
       </p>
 
       <div className="mt-8 flex rounded-full bg-surface-2 p-1" role="tablist" aria-label="How to find the place">

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { rideHref } from "@/lib/ride-model";
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
@@ -18,7 +19,7 @@ const CrewMap = dynamic(() => import("./maps").then((m) => m.CrewMap), {
   loading: () => <div className="skeleton h-full w-full" />,
 });
 
-export function CrewMapView({ slug, items, loops }: { slug: string; items: FeedItem[]; loops: { id: string; route: [number, number][] }[] }) {
+export function CrewMapView({ slug, items }: { slug: string; items: FeedItem[] }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [cats, setCats] = useState<Category[]>([...CATEGORY_KEYS]);
   const shown = useMemo(() => items.filter((d) => cats.includes(d.category as Category)), [items, cats]);
@@ -48,7 +49,7 @@ export function CrewMapView({ slug, items, loops }: { slug: string; items: FeedI
 
   return (
     <div className="relative -mb-[calc(64px+env(safe-area-inset-bottom))] h-dvh lg:mb-0">
-      <CrewMap key={cats.join()} items={shown} loops={loops} selected={selected} onSelect={setSelected} className="h-full w-full" />
+      <CrewMap key={cats.join()} items={shown} selected={selected} onSelect={setSelected} className="h-full w-full" />
 
       <div className="absolute inset-x-0 top-0 z-[500] bg-bg px-4 pb-3 pt-[max(env(safe-area-inset-top),14px)] shadow-[0_1px_0_var(--line)] lg:hidden">
         <h1 className="display text-[30px]">Ride map</h1>
@@ -105,7 +106,7 @@ export function CrewMapView({ slug, items, loops }: { slug: string; items: FeedI
             transition={{ type: "spring", stiffness: 420, damping: 36 }}
             className="absolute inset-x-3 bottom-[calc(76px+env(safe-area-inset-bottom))] z-[600] lg:bottom-6 lg:left-[396px] lg:right-auto lg:w-[440px]"
           >
-            <Link href={`/g/${slug}/d/${current.id}`} className="float flex items-center gap-4 rounded-[10px] bg-surface p-3 pr-4">
+            <Link href={rideHref(slug, current.id)} className="float flex items-center gap-4 rounded-[10px] bg-surface p-3 pr-4">
               <div className="h-[88px] w-[88px] shrink-0 overflow-hidden rounded-[4px]">
                 {current.photos[0] ? (
                   // eslint-disable-next-line @next/next/no-img-element

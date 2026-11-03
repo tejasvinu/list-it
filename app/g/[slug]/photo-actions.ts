@@ -2,6 +2,8 @@
 
 import { Binary, MongoServerError } from "mongodb";
 import { revalidatePath } from "next/cache";
+import { readRide } from "@/lib/ride-store";
+import { rideHref } from "@/lib/ride-model";
 import { getGroupBySlug, getViewer } from "@/lib/auth";
 import { cols, toDoc, type Upload } from "@/lib/db";
 import { rid } from "@/lib/ids";
@@ -29,7 +31,7 @@ export async function uploadPhoto(slug: string, destinationId: string, form: For
   const dimensions = await inspectPhoto(bytes, thumb, photo.type);
   if (!dimensions) return { ok: false, error: "That image has an invalid format or size." };
   const c = await cols();
-  const destination = await c.destinations.findOne({ _id: destinationId, groupId: group.id, deletedAt: null });
+  const destination = await readRide(group.id, destinationId);
   if (!destination) return { ok: false, error: "Ride not found." };
   for (let attempt = 0; attempt < PHOTO_CREW_LIMIT; attempt++) {
     const slots = await c.uploads.find({ groupId: group.id }, {
@@ -48,11 +50,11 @@ export async function uploadPhoto(slug: string, destinationId: string, form: For
     };
     try {
       await c.uploads.insertOne(toDoc(upload));
-      if (!(await c.destinations.findOne({ _id: destinationId, groupId: group.id, deletedAt: null }, { projection: { _id: 1 } }))) {
+      if (!(await readRide(group.id, destinationId))) {
         await c.uploads.deleteOne({ _id: upload.id });
         return { ok: false, error: "Ride not found." };
       }
-      revalidatePath(`/g/${slug}/d/${destinationId}`);
+      revalidatePath(rideHref(slug, destinationId));
       return { ok: true };
     } catch (error) {
       if (!(error instanceof MongoServerError) || error.code !== 11000) throw error;
@@ -69,11 +71,11 @@ export async function deletePhoto(slug: string, photoId: string): Promise<Result
   const c = await cols();
   const photo = await c.uploads.findOne({ _id: photoId, groupId: group.id }, { projection: { riderId: 1, destinationId: 1 } });
   if (!photo) return { ok: false, error: "Photo not found." };
-  const destination = await c.destinations.findOne({ _id: photo.destinationId, groupId: group.id, deletedAt: null }, { projection: { riderId: 1 } });
+  const destination = await readRide(group.id, photo.destinationId);
   if (!destination || (photo.riderId !== viewer.id && destination.riderId !== viewer.id)) {
     return { ok: false, error: "Only the photographer or ride owner can delete this photo." };
   }
   await c.uploads.deleteOne({ _id: photoId, groupId: group.id });
-  revalidatePath(`/g/${slug}/d/${photo.destinationId}`);
+  revalidatePath(rideHref(slug, photo.destinationId));
   return { ok: true };
 }

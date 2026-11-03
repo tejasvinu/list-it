@@ -1,6 +1,6 @@
 import { CATEGORY_KEYS, ROAD_TAG_KEYS, SEASON_KEYS, STATUS_KEYS } from "./config";
 import { todayYmd } from "./format";
-import type { Photo, RoadSplit } from "./types";
+import type { Photo, RoadSplit, Itinerary } from "./types";
 
 // Ride input arrives from the browser as arbitrary JSON, so nothing here trusts a type annotation.
 
@@ -71,6 +71,8 @@ export function cleanRoute(v: unknown): [number, number][] | null {
 }
 
 export type DestinationInput = {
+  itinerary?: Itinerary | null;
+  expectedUpdatedAt?: string;
   name: string;
   area: string | null;
   mapsUrl: string | null;
@@ -104,7 +106,7 @@ export function validateDestination(raw: unknown, now: Date | number = Date.now(
   if (!num(distanceKm) || !num(durationMin) || distanceKm <= 0 || durationMin <= 0) return null;
   const route = cleanRoute(input.route);
   if (!route) return null;
-  const name = clean(input.name, 60);
+  const name = clean(input.name, 80);
   if (!name) return null;
 
   const known = new Set<string>(ROAD_TAG_KEYS);
@@ -120,8 +122,11 @@ export function validateDestination(raw: unknown, now: Date | number = Date.now(
   const status = typeof input.status === "string" && STATUS_KEYS.includes(input.status as never) ? input.status : "wishlist";
   const date = validDate(input.statusDate) ? input.statusDate : null;
   const hairpins = input.hairpins;
+  const itinerary = input.itinerary == null ? input.itinerary : validateItinerary(input.itinerary);
+  if (input.itinerary != null && !itinerary) return null;
 
   return {
+    ...("itinerary" in input ? { itinerary: itinerary ?? null } : {}),
     name,
     area: clean(input.area, 80) || null,
     mapsUrl: mapsUrlOk(input.mapsUrl) ? input.mapsUrl : null,
@@ -141,7 +146,7 @@ export function validateDestination(raw: unknown, now: Date | number = Date.now(
     // "Ridden" in the form means the person saving it has ridden it; that's kept per rider in `rides`.
     status: status === "done" ? "wishlist" : status,
     statusDate: status === "planned" ? date : null,
-    rideReport: status === "done" ? cleanMultiline(input.rideReport, 3000) || null : null,
+    rideReport: cleanMultiline(input.rideReport, 3000) || null,
     riddenOn: status === "done" ? (validRideDate(date, now) ? date : todayYmd(now)) : null,
   };
 }
@@ -150,6 +155,16 @@ export function validDate(value: unknown): value is string {
   if (typeof value !== "string" || !YMD.test(value) || value < "1900-01-01" || value > "9998-12-31") return false;
   const date = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+export function validateItinerary(raw: unknown): Itinerary | null {
+  if (!raw || typeof raw !== "object") return null;
+  const trip = raw as Partial<Itinerary>;
+  const start = validStart(trip.start);
+  const checked = validateLoop({ name: "Ride", stops: trip.stops, startDate: null });
+  if (trip.version !== 1 || !start || !checked || !Array.isArray(trip.legs) || trip.legs.length !== checked.stops.length + 1) return null;
+  if (!trip.legs.every(leg => leg && num(leg.km) && leg.km >= 0 && num(leg.min) && leg.min >= 0 && typeof leg.approx === "boolean" && cleanRoute(leg.route))) return null;
+  return { version: 1, start, stops: checked.stops, legs: trip.legs };
 }
 
 export function validRideDate(value: unknown, now: Date | number = Date.now()): value is string {

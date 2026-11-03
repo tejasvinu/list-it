@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { rideHref } from "@/lib/ride-model";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { markActivitySeen, markNotificationsRead } from "@/app/g/[slug]/actions";
@@ -14,7 +15,6 @@ type Digest = {
   added: { id: string; name: string }[];
   planned: { id: string; name: string; date: string; riders: string }[];
   ridden: { id: string; name: string; detail: string }[];
-  loops: { id: string; name: string }[];
 };
 
 function message(kind: string, name: string, detail: string | null) {
@@ -73,12 +73,11 @@ export function ActivityViews({
     const lines = ["This week on list-it"];
     for (const item of digest.planned)
       lines.push(
-        `Planned: ${item.name} · ${prettyDate(item.date)}${item.riders ? ` · ${item.riders} in` : ""}\n${base}/d/${item.id}`,
+        `Planned: ${item.name} · ${prettyDate(item.date)}${item.riders ? ` · ${item.riders} in` : ""}\n${location.origin}${rideHref(slug, item.id)}`,
       );
-    for (const item of digest.added) lines.push(`Added: ${item.name}\n${base}/d/${item.id}`);
+    for (const item of digest.added) lines.push(`Added: ${item.name}\n${location.origin}${rideHref(slug, item.id)}`);
     for (const item of digest.ridden)
-      lines.push(`Ridden: ${item.name}${item.detail ? ` · ${item.detail}` : ""}\n${base}/d/${item.id}`);
-    for (const item of digest.loops) lines.push(`New loop: ${item.name}\n${base}/loops/${item.id}`);
+      lines.push(`Ridden: ${item.name}${item.detail ? ` · ${item.detail}` : ""}\n${location.origin}${rideHref(slug, item.id)}`);
     let text = lines[0];
     for (const line of lines.slice(1)) {
       if (text.length + line.length + 2 > 1450) break;

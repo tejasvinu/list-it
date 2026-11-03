@@ -2,12 +2,14 @@ import "server-only";
 import { notify } from "./notifications";
 import { cache } from "react";
 import { notFound } from "next/navigation";
-import { cols, fromDoc, toDoc, type Activity, type Comment, type Destination, type Group, type Rider, type Stop } from "./db";
+import { cols, fromDoc, toDoc, type Activity, type Comment, type Destination, type Group, type Rider, type Stop, type Loop } from "./db";
 import { getGroupBySlug, getViewer, registrationOpen } from "./auth";
 import { rid } from "./ids";
 import type { RiderLite } from "./types";
 import { originKey } from "./origin-routes";
 import { HOME } from "./config";
+import { loopKey, normalizeLoop, rideRef, rideRouteKey } from "./ride-model";
+import { readRide } from "./ride-store";
 import type { WeatherDay } from "./weather-types";
 export type { RiderLite };
 
@@ -52,6 +54,7 @@ export type FeedItem = Destination & {
   iRode: boolean;
   /** The rider who added it has been removed, so anyone in the crew can look after it */
   ownerGone: boolean;
+  canEdit: boolean;
   commentCount: number;
   stopCount: number;
 };
@@ -59,12 +62,13 @@ export type FeedItem = Destination & {
 async function hydrate(rows: Destination[], groupRiders: RiderLite[], viewerId: string | null) {
   if (!rows.length) return [];
   const ids = rows.map((d) => d.id);
+  const loopIds = ids.flatMap(id => { const ref = rideRef(id); return ref?.source === "loop" ? [ref.id] : []; });
   const byId = new Map(groupRiders.map((r) => [r.id, r]));
   const who = (id: string) => byId.get(id) ?? ghost;
   const c = await cols();
 
   const start = groupRiders.find(r => r.id === viewerId)?.start;
-  const [rx, ins, rd, cc, sc, origins, weather] = await Promise.all([
+  const [rx, ins, rd, cc, sc, origins, weather, loopIns, loopCounts] = await Promise.all([
     c.reactions.find({ destinationId: { $in: ids } }, { projection: { _id: 0 } }).sort({ createdAt: 1 }).toArray(),
     c.interests.find({ destinationId: { $in: ids } }, { projection: { _id: 0 } }).sort({ createdAt: 1 }).toArray(),
     c.rides.find({ destinationId: { $in: ids } }, { projection: { _id: 0 } }).sort({ date: -1, createdAt: -1 }).toArray(),
@@ -82,24 +86,29 @@ async function hydrate(rows: Destination[], groupRiders: RiderLite[], viewerId: 
       .toArray(),
     start ? c.originRoutes.find({ destinationId: { $in: ids }, ...originKey(start) }).toArray() : Promise.resolve([]),
     c.weather.find({ $or: rows.map(d => ({ lat: Number(d.lat.toFixed(2)), lng: Number(d.lng.toFixed(2)) })) }).toArray(),
+    c.loopInterests.find({ loopId: { $in: loopIds } }).sort({ createdAt: 1 }).toArray(),
+    c.loopComments.aggregate<{ _id: string; n: number }>([{ $match: { loopId: { $in: loopIds }, deletedAt: null } }, { $group: { _id: "$loopId", n: { $sum: 1 } } }]).toArray(),
   ]);
   const commentCounts = new Map(cc.map((x) => [x._id, x.n]));
+  for (const row of loopCounts) commentCounts.set(loopKey(row._id), row.n);
   const stopCounts = new Map(sc.map((x) => [x._id, x.n]));
 
   return rows.map<FeedItem>((d) => {
     const myRx = rx.filter((r) => r.destinationId === d.id);
-    const myIns = ins.filter((i) => i.destinationId === d.id);
+    const ref = rideRef(d.id)!;
+    const myIns = ref.source === "loop" ? loopIns.filter(i => i.loopId === ref.id) : ins.filter((i) => i.destinationId === d.id);
     const myRides = rd.filter((r) => r.destinationId === d.id);
     return {
       ...d,
       owner: who(d.riderId),
       ownerGone: !byId.has(d.riderId),
+      canEdit: d.riderId === viewerId || (ref.source === "destination" && !byId.has(d.riderId)),
       reactions: myRx.map((r) => ({ emoji: r.emoji, rider: who(r.riderId) })),
       myReaction: myRx.find((r) => r.riderId === viewerId)?.emoji ?? null,
       interested: myIns.map((i) => who(i.riderId)),
       imIn: myIns.some((i) => i.riderId === viewerId),
       riddenBy: myRides.map((r) => ({ rider: who(r.riderId), date: r.date, note: r.note ?? null, loggedBy: r.loggedBy ?? null })),
-      fromYou: (() => { const route = origins.find(o => o.destinationId === d.id && o.destinationLat === d.lat && o.destinationLng === d.lng); return start && route && (start.lat !== HOME.lat || start.lng !== HOME.lng) ? { name: start.name, distanceKm: route.distanceKm, durationMin: route.durationMin, approx: route.approx } : null; })(),
+      fromYou: (() => { const route = origins.find(o => o.destinationId === d.id && o.destinationLat === d.lat && o.destinationLng === d.lng && (d.itinerary ? o.routeKey === rideRouteKey(d) : !o.routeKey)); return start && route && (start.lat !== HOME.lat || start.lng !== HOME.lng) ? { name: start.name, distanceKm: route.distanceKm, durationMin: route.durationMin, approx: route.approx } : null; })(),
       forecastDay: (() => { const w = weather.find(w => w.lat === Number(d.lat.toFixed(2)) && w.lng === Number(d.lng.toFixed(2)) && Date.now() - w.updatedAt.getTime() < 3600000); return d.status === "planned" && d.statusDate ? w?.days.find(day => day.date === d.statusDate) ?? null : null; })(),
       iRode: myRides.some((r) => r.riderId === viewerId),
       commentCount: commentCounts.get(d.id) ?? 0,
@@ -109,39 +118,47 @@ async function hydrate(rows: Destination[], groupRiders: RiderLite[], viewerId: 
 }
 
 export async function getFeed(ctx: GroupContext) {
-  const rows = await (await cols()).destinations
-    .find({ groupId: ctx.group.id, deletedAt: null })
-    .sort({ createdAt: -1 })
-    .toArray();
-  return hydrate(rows.map((r) => fromDoc<Destination>(r)), ctx.riders, ctx.viewer?.id ?? null);
+  const c = await cols();
+  const filter = { groupId: ctx.group.id, deletedAt: null };
+  const [destinations, loops] = await Promise.all([
+    c.destinations.find(filter).toArray(), c.loops.find(filter).toArray(),
+  ]);
+  const rows = [...destinations.map(row => fromDoc<Destination>(row)), ...loops.map(row => normalizeLoop(fromDoc<Loop>(row)))];
+  rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  return hydrate(rows, ctx.riders, ctx.viewer?.id ?? null);
 }
 
 /** Rides added and ridden per rider, without loading every route. */
 export async function getRiderCounts(ctx: GroupContext) {
   const c = await cols();
-  const live = await c.destinations.find({ groupId: ctx.group.id, deletedAt: null }, { projection: { riderId: 1 } }).toArray();
-  const ridden = await c.rides
-    .aggregate<{ _id: string; n: number }>([
-      { $match: { destinationId: { $in: live.map((d) => d._id) } } },
-      { $group: { _id: "$riderId", n: { $sum: 1 } } },
-    ])
-    .toArray();
+  const filter = { groupId: ctx.group.id, deletedAt: null };
+  const [destinations, loops] = await Promise.all([
+    c.destinations.find(filter, { projection: { riderId: 1 } }).toArray(),
+    c.loops.find(filter, { projection: { riderId: 1 } }).toArray(),
+  ]);
+  const ids = [...destinations.map(d => d._id), ...loops.map(d => loopKey(d._id))];
+  const ridden = await c.rides.aggregate<{ _id: string; n: number }>([
+    { $match: { destinationId: { $in: ids } } }, { $group: { _id: "$riderId", n: { $sum: 1 } } },
+  ]).toArray();
   const added = new Map<string, number>();
-  for (const d of live) added.set(d.riderId, (added.get(d.riderId) ?? 0) + 1);
-  const rode = new Map(ridden.map((r) => [r._id, r.n]));
+  for (const row of [...destinations, ...loops]) added.set(row.riderId, (added.get(row.riderId) ?? 0) + 1);
+  const rode = new Map(ridden.map(row => [row._id, row.n]));
   return (riderId: string) => ({ added: added.get(riderId) ?? 0, ridden: rode.get(riderId) ?? 0 });
 }
 
 export async function getDestination(ctx: GroupContext, id: string) {
   const c = await cols();
-  const row = await c.destinations.findOne({ _id: id, groupId: ctx.group.id, deletedAt: null });
+  const row = await readRide(ctx.group.id, id);
   if (!row) return null;
-  const itemPromise = hydrate([fromDoc<Destination>(row)], ctx.riders, ctx.viewer?.id ?? null);
+  const ref = rideRef(id)!;
+  const itemPromise = hydrate([row], ctx.riders, ctx.viewer?.id ?? null);
   const byId = new Map(ctx.riders.map((r) => [r.id, r]));
 
   const [[item], thread, stopRows, uploadRows] = await Promise.all([
     itemPromise,
-    c.comments.find({ destinationId: id, deletedAt: null }).sort({ createdAt: 1 }).toArray(),
+    ref.source === "loop"
+      ? c.loopComments.find({ loopId: ref.id, deletedAt: null }).sort({ createdAt: 1 }).toArray().then(rows => rows.map(row => ({ ...row, destinationId: id })))
+      : c.comments.find({ destinationId: id, deletedAt: null }).sort({ createdAt: 1 }).toArray(),
     c.stops.find({ destinationId: id }).sort({ createdAt: 1 }).toArray(),
     c.uploads.find({ groupId: ctx.group.id, destinationId: id }, {
       projection: { riderId: 1, createdAt: 1 },
@@ -191,7 +208,7 @@ export async function getActivity(ctx: GroupContext, limit = 120) {
         ...r,
         rider: byId.get(r.riderId)!,
         loopName: r.loopId ? loopById.get(r.loopId)?.name ?? null : null,
-        destName: d?.name ?? null,
+        destName: d?.name ?? (r.loopId ? loopById.get(r.loopId)?.name : null) ?? null,
         destCategory: d?.category ?? null,
         destRoute: d?.route ?? null,
         destPhoto: d?.photos?.[0]?.thumb ?? null,
@@ -212,8 +229,12 @@ export async function logActivity(
   destinationId: string | null,
   detail: string | null = null,
 ) {
+  const ref = destinationId ? rideRef(destinationId) : null;
+  const loopId = ref?.source === "loop" ? ref.id : null;
+  const targetId = loopId ? null : destinationId;
+  const eventKind = loopId && kind === "commented" ? "loop-commented" : loopId && kind === "in" ? "loop-in" : kind;
   await (await cols()).activity.insertOne(
-    toDoc<Activity>({ id: rid(), groupId: ctx.groupId, riderId: ctx.riderId, kind, destinationId, detail, createdAt: new Date() }),
+    toDoc<Activity>({ id: rid(), groupId: ctx.groupId, riderId: ctx.riderId, kind: eventKind, destinationId: targetId, loopId, detail, createdAt: new Date() }),
   );
-  if (destinationId && kind !== "rode") await notify(ctx.groupId, ctx.riderId, kind, destinationId, null, detail);
+  if (destinationId && kind !== "rode") await notify(ctx.groupId, ctx.riderId, eventKind, targetId, loopId, detail);
 }

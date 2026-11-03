@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type * as Leaflet from "leaflet";
-import { HOME, STOP_KINDS, type StopKind } from "@/lib/config";
+import { ITINERARY_COLORS, HOME, STOP_KINDS, type StopKind } from "@/lib/config";
 import { categoryOf } from "@/lib/format";
 
 // Standard OSM tiles (free, no key), turned grey (or inverted at night) by .map-tiles in globals.css.
@@ -168,13 +168,11 @@ export type CrewMapItem = {
 
 export function CrewMap({
   items,
-  loops,
   selected,
   onSelect,
   className,
 }: {
   items: CrewMapItem[];
-  loops: { id: string; route: [number, number][] }[];
   selected: string | null;
   onSelect: (id: string | null) => void;
   className?: string;
@@ -204,12 +202,8 @@ export function CrewMap({
           })
           .addTo(map);
         home.extend([d.lat, d.lng]);
+        if (d.route.length) home.extend(line.getBounds());
         byId.set(d.id, { line, marker, item: d });
-      }
-      for (const loop of loops) {
-        if (loop.route.length < 2) continue;
-        const line = L.polyline(loop.route, { color: "#E2513A", weight: 3, opacity: 0.8, dashArray: "8 7" }).addTo(map);
-        home.extend(line.getBounds());
       }
       L.marker([HOME.lat, HOME.lng], { icon: homeIcon(L) }).addTo(map);
       map.on("click", () => selectRef.current(null));
@@ -219,7 +213,7 @@ export function CrewMap({
         layers.current = null;
       };
     },
-    [JSON.stringify(items), JSON.stringify(loops)],
+    [JSON.stringify(items)],
   );
 
   // Restyle in place when the selection changes, so the map never reloads.
@@ -244,20 +238,21 @@ export function CrewMap({
 }
 
 
-const DAY_COLORS = ["#3A78F0", "#E2513A", "#13A189", "#F07A1F", "#20A059"];
+
 
 /** Numbered stops and one colour for each day's routed legs. */
-export function LoopMap({ start, stops, legs, className }: {
+export function LoopMap({ start, stops, legs, poiStops = [], className }: {
   start: import("@/lib/types").StartPoint;
   stops: import("@/lib/types").LoopStop[];
   legs: import("@/lib/types").LoopLeg[];
+  poiStops?: { lat: number | null; lng: number | null; kind: string; name: string }[];
   className?: string;
 }) {
   const ref = useLeafletMap((L, map) => {
     const bounds = L.latLngBounds([[start.lat, start.lng]]);
     let day = 0;
     legs.forEach((leg, i) => {
-      const line = L.polyline(leg.route, { color: DAY_COLORS[day % DAY_COLORS.length], weight: 4, opacity: 0.9 }).addTo(map);
+      const line = L.polyline(leg.route, { color: ITINERARY_COLORS[day % ITINERARY_COLORS.length], weight: 4, opacity: 0.9 }).addTo(map);
       if (leg.route.length) bounds.extend(line.getBounds());
       if (stops[i]?.nightHere) day++;
     });
@@ -267,7 +262,10 @@ export function LoopMap({ start, stops, legs, className }: {
       L.marker([stop.lat, stop.lng], { icon }).bindTooltip(escapeHtml(stop.name)).addTo(map);
       bounds.extend([stop.lat, stop.lng]);
     });
+    for (const stop of poiStops) {
+      if (stop.lat != null && stop.lng != null) L.marker([stop.lat, stop.lng], { icon: stopIcon(L, stop.kind) }).bindTooltip(escapeHtml(stop.name), { direction: "top" }).addTo(map);
+    }
     map.fitBounds(bounds, { padding: [35, 35] });
-  }, [JSON.stringify(start), JSON.stringify(stops), JSON.stringify(legs)]);
+  }, [JSON.stringify(start), JSON.stringify(stops), JSON.stringify(legs), JSON.stringify(poiStops)]);
   return <div ref={ref} className={`isolate ${className ?? ""}`} />;
 }

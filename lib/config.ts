@@ -2,6 +2,8 @@
 
 /** Every ride starts and ends here (Bengaluru city centre). */
 export const HOME = { name: "Bengaluru", short: "BLR", lat: 12.9716, lng: 77.5946 };
+/** Shared by the itinerary map and its day-by-day legend. */
+export const ITINERARY_COLORS = ["#3A78F0", "#E2513A", "#13A189", "#F07A1F", "#20A059"];
 
 export const START_AREAS = [
   { name: "Whitefield", lat: 12.9698, lng: 77.75 },

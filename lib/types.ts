@@ -14,9 +14,14 @@ export type RiderLite = { id: string; name: string; emoji: string; color: string
 
 export type LoopStop = { destinationId: string | null; name: string; lat: number; lng: number; nightHere: boolean };
 export type LoopLeg = { km: number; min: number; approx: boolean; route: [number, number][] };
+export type Itinerary = { version: 1; start: StartPoint; stops: LoopStop[]; legs: LoopLeg[] };
 export type Loop = {
   id: string; groupId: string; riderId: string; name: string; notes: string | null;
   start: StartPoint; stops: LoopStop[]; startDate: string | null; legs: LoopLeg[];
   totalKm: number; totalMin: number; route: [number, number][];
   createdAt: Date; updatedAt: Date; deletedAt: Date | null;
+  /** Optional ride metadata. Old loops are read without backfilling these fields. */
+  category?: string; tags?: string[]; seasons?: string[]; roadSplit?: RoadSplit | null;
+  photos?: Photo[]; hairpins?: number | null; rideReport?: string | null;
+  status?: string;
 };

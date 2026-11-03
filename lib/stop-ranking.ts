@@ -73,7 +73,7 @@ export function rankStops(stops: SuggestedStop[], outboundKm: number): Suggested
 }
 
 /** Build a bounded query for the outbound leg only. */
-export function buildStopQuery(route: Point[], destination: { lat: number; lng: number }) {
+export function buildStopQuery(route: Point[], destination: { lat: number; lng: number; fullRoute?: boolean }) {
   if (!route.length) return { query: "", samples: [] as RouteSample[] };
   let end = 0;
   let closest = Infinity;
@@ -84,7 +84,7 @@ export function buildStopQuery(route: Point[], destination: { lat: number; lng: 
       end = index;
     }
   });
-  const outbound = route.slice(0, end + 1);
+  const outbound = destination.fullRoute ? route : route.slice(0, end + 1);
   const length = outbound.reduce((sum, point, i) => i ? sum + distance(outbound[i - 1], point) : 0, 0);
   const samples = sampleRoute(outbound, Math.max(5, length / 39 + 0.001));
   const around = samples.map((s) => `${s.lat.toFixed(5)},${s.lng.toFixed(5)}`).join(",");
