@@ -5,13 +5,14 @@ import { rideDays, rideMaps } from "@/lib/ride-model";
 import { googleMapsPlace } from "@/lib/format";
 import { loopDays } from "@/lib/loops";
 import { validDate } from "@/lib/validate";
+import { siteOrigin } from "@/lib/origin";
 
-export async function GET(request: Request, { params }: RouteContext<"/g/[slug]/calendar/[kind]/[id]">) {
+export async function GET(_request: Request, { params }: RouteContext<"/g/[slug]/calendar/[kind]/[id]">) {
   const { slug, kind, id } = await params;
   const group = await getGroupBySlug(slug);
   if (!group || !(await getViewer(group.id))) return new Response("Not found", { status: 404 });
   const c = await cols();
-  const origin = new URL(request.url).origin;
+  const origin = await siteOrigin();
   let event: Parameters<typeof calendarEvent>[0];
   if (kind === "ride") {
     const ride = await c.destinations.findOne({ _id: id, groupId: group.id, deletedAt: null, status: "planned" });

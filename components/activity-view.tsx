@@ -64,8 +64,7 @@ function describe(a: ActivityItem) {
 }
 
 /** Days are counted in India, so the server (UTC) and the phone put a 1 am ride under the same heading. */
-function dayLabel(d: Date) {
-  const now = Date.now();
+function dayLabel(d: Date, now: number) {
   const day = todayYmd(d);
   if (day === todayYmd(now)) return "Today";
   if (day === todayYmd(now - 86400000)) return "Yesterday";
@@ -80,11 +79,13 @@ export function ActivityView({
   items,
   meId,
   seenAt,
+  now,
 }: {
   slug: string;
   items: ActivityItem[];
   meId: string;
   seenAt: number;
+  now: number;
 }) {
   // Keep the "new" highlights for this visit even after we mark everything seen.
   const [seen] = useState(seenAt);
@@ -92,7 +93,7 @@ export function ActivityView({
 
   const groups: { label: string; items: ActivityItem[] }[] = [];
   for (const a of items) {
-    const label = dayLabel(new Date(a.createdAt));
+    const label = dayLabel(new Date(a.createdAt), now);
     const last = groups.at(-1);
     if (last?.label === label) last.items.push(a);
     else groups.push({ label, items: [a] });

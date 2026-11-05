@@ -4,8 +4,15 @@ import "./env.mts";
 import { createHmac } from "node:crypto";
 import { MongoClient } from "mongodb";
 
-const client = await MongoClient.connect(process.env.MONGODB_URI!);
-const db = client.db(process.env.MONGODB_DB!);
+const uri = process.env.MONGODB_URI!;
+const dbName = process.env.MONGODB_DB!;
+const local = /^mongodb:\/\/(localhost|127\.0\.0\.1)/.test(uri);
+if (!local && (!dbName || !dbName.endsWith("-dev"))) {
+  console.error(`Refusing to mint a session against a non-dev database ("${dbName ?? "unset"}").`);
+  process.exit(1);
+}
+const client = await MongoClient.connect(uri);
+const db = client.db(dbName);
 const name = (process.argv[2] ?? "karthik").toLowerCase();
 const r = await db.collection<{ _id: string; groupId: string; sessionVersion: number }>("riders").findOne(
   { nameKey: name },

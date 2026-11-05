@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { cols } from "@/lib/db";
-import { getGroupContext, hasUnread, lite } from "@/lib/data";
+import { getGroupContext, hasUnread, lite, requestNow } from "@/lib/data";
 import { JoinScreen } from "@/components/join-screen";
 import { BottomNav } from "@/components/bottom-nav";
 import { RouteWeb } from "@/components/route-web";
@@ -32,6 +32,7 @@ export default async function GroupLayout({ children, params }: LayoutProps<"/g/
         destinationCount={rows.length}
         open={ctx.registrationOpen}
         closesAt={ctx.group.registrationClosesAt.getTime()}
+        now={requestNow()}
         hero={<RouteWeb routes={rows} width={480} height={300} className="h-full w-full" />}
       />
     );

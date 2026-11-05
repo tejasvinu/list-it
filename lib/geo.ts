@@ -162,12 +162,19 @@ async function geocodePostcode(pin: string) {
  * Geocodes Google's "Name, Locality, State 123456" text. Tries the most specific parts first,
  * then the PIN code, and only falls back to the bare state as a last resort.
  */
+/** A pasted link must not turn into an unbounded burst of Photon requests. */
+const MAX_GEOCODE_PARTS = 5;
+/** Origin + up to 20 itinerary places + destination. */
+const MAX_ROUTE_POINTS = 22;
+
 async function geocodeText(text: string, { preferPostcode = false, near = HOME as LatLng } = {}) {
-  const pin = text.match(/\b(\d{6})\b/)?.[1];
-  const parts = text
+  const limited = text.slice(0, 240);
+  const pin = limited.match(/\b(\d{6})\b/)?.[1];
+  const parts = limited
     .split(",")
     .map((s) => s.replace(/\b\d{6}\b/, "").trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .slice(0, MAX_GEOCODE_PARTS);
   const hitAt = (hit: PhotonFeature) => ({
     lat: hit.geometry.coordinates[1],
     lng: hit.geometry.coordinates[0],
@@ -482,6 +489,9 @@ export async function resolveRoute(input: string) {
   const { waypoints, view } = parseMapsRoute(await openMapsLink(link));
   if (waypoints.length < 2) {
     throw new Error("That link is a single place, not a route. Use “Use link or coordinates” for it.");
+  }
+  if (waypoints.length > MAX_ROUTE_POINTS) {
+    throw new Error(`That route has too many stops. Use ${MAX_ROUTE_POINTS - 2} places or fewer.`);
   }
   // A route's view spans the whole trip, so it only biases name lookups and never stands in for a stop.
   const near = view && { ...view, zoom: null };

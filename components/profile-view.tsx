@@ -75,7 +75,7 @@ export function ProfileView({
           <div className="min-w-0">
             <h1 className="display truncate text-[40px] lg:text-[52px]">{rider.name}</h1>
             <p className="text-[15px] text-muted" suppressHydrationWarning>
-              Riding with the crew since {new Date(joinedAt).toLocaleDateString("en-IN", { month: "long", year: "numeric" })}
+              Riding with the crew since {new Date(joinedAt).toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "Asia/Kolkata" })}
             </p>
           </div>
         </div>

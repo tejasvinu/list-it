@@ -1,5 +1,6 @@
 "use server";
 
+import { redirect } from "next/navigation";
 import { getGroupContext } from "@/lib/data";
 import { cols } from "@/lib/db";
 import { HOME } from "@/lib/config";
@@ -9,11 +10,15 @@ import { rideAnchor } from "@/lib/ride-model";
 import { routeLoop } from "@/lib/loop-routing";
 import { loopDays } from "@/lib/loops";
 import { sealRoute } from "@/lib/seal";
+import { allow } from "@/lib/throttle";
 import type { Preview } from "./actions";
 
 export async function previewRideItinerary(slug: string, stops: unknown, editKey?: string): Promise<{ ok: true; preview: Preview } | { ok: false; error: string }> {
   const ctx = await getGroupContext(slug);
-  if (!ctx.viewer) return { ok: false, error: "Sign in first." };
+  if (!ctx.viewer) redirect(`/g/${slug}`);
+  if (!(await allow(`itinerary:${ctx.viewer.id}`, 60, 10 * 60 * 1000))) {
+    return { ok: false, error: "Too many route changes. Try again in a few minutes." };
+  }
   const checked = validateLoop({ name: "Ride", stops, startDate: null });
   if (!checked) return { ok: false, error: "Add between 1 and 20 valid places." };
   const old = editKey ? await readRide(ctx.group.id, editKey) : null;

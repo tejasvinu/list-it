@@ -47,6 +47,7 @@ export function ActivityViews({
   notifications,
   meId,
   seenAt,
+  now,
   digest,
 }: {
   slug: string;
@@ -54,6 +55,7 @@ export function ActivityViews({
   notifications: Awaited<ReturnType<typeof getNotifications>>;
   meId: string;
   seenAt: number;
+  now: number;
   digest: Digest;
 }) {
   const [view, setView] = useState<"you" | "crew">("you");
@@ -108,7 +110,7 @@ export function ActivityViews({
         </button>
       </div>
       {view === "crew" ? (
-        <ActivityView slug={slug} items={items} meId={meId} seenAt={seenAt} />
+        <ActivityView slug={slug} items={items} meId={meId} seenAt={seenAt} now={now} />
       ) : (
         <>
           <header className="px-4 pt-6 lg:px-0">

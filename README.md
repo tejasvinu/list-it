@@ -20,7 +20,7 @@ No accounts. Each crew lives at a secret link. Anyone with the link can join wit
 | Ride log | Record who rode, when, and personal notes; see each rider's history. |
 | Weather | Forecasts from Open-Meteo and seasonal hints, including monsoon warnings for ghat roads. |
 | Activity | In-app notifications and a WhatsApp summary you choose to send. |
-| Photos | Rider uploads stored in MongoDB (up to 6 per rider per ride and 400 per crew), plus credited Wikimedia Commons photos. |
+| Photos | Rider uploads stored in MongoDB (up to 6 per rider per ride, 400 per crew, 200 MB per crew), plus credited Wikimedia Commons photos. |
 | Link previews | Every ride has its own WhatsApp preview image: route, distance, hairpins, photo. |
 
 Stack: Next.js 16 (App Router, server actions), MongoDB, Tailwind 4, Motion, Leaflet with OpenStreetMap tiles. Nothing here needs a paid API key.

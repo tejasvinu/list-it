@@ -201,6 +201,7 @@ async function ensureIndexes(db: Db) {
     db.collection("stops").createIndex({ destinationId: 1, createdAt: 1 }),
     db.collection("activity").createIndex({ groupId: 1, createdAt: -1 }),
     db.collection("activity").createIndex({ destinationId: 1, riderId: 1, kind: 1 }),
+    db.collection("activity").createIndex({ groupId: 1, loopId: 1, riderId: 1, kind: 1 }),
     db.collection("destinations").createIndex({ status: 1 }),
     db.collection("throttle").createIndex({ resetAt: 1 }, { expireAfterSeconds: 0 }),
     db.collection("adminSessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),

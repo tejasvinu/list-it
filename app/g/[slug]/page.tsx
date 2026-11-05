@@ -1,21 +1,23 @@
 import { Suspense } from "react";
 import { forecast } from "@/lib/weather";
 import { daysUntil, prettyDate } from "@/lib/format";
-import { getFeed, getGroupContext, lite } from "@/lib/data";
+import { getFeed, getGroupContext, lite, requestNow } from "@/lib/data";
 import { FeedView } from "@/components/feed-view";
 
 export default async function FeedPage({ params }: PageProps<"/g/[slug]">) {
   const { slug } = await params;
   const ctx = await getGroupContext(slug);
   if (!ctx.viewer) return null;
+  const now = requestNow();
   const items = await getFeed(ctx);
   return (
     <FeedView
       slug={slug}
       groupName={ctx.group.name}
       items={items}
+      now={now}
       forecasts={Object.fromEntries(items.flatMap((item) => {
-        if (item.status !== "planned" || !item.statusDate || daysUntil(item.statusDate) < 0 || daysUntil(item.statusDate) >= 16) return [];
+        if (item.status !== "planned" || !item.statusDate || daysUntil(item.statusDate, now) < 0 || daysUntil(item.statusDate, now) >= 16) return [];
         const weather = forecast(item).catch(() => null);
         return [[item.id, <Suspense key={item.id} fallback={null}><FeedForecast weather={weather} date={item.statusDate} /></Suspense>]];
       }))}

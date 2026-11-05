@@ -47,6 +47,7 @@ export function FeedView({
   me,
   inviteOpen,
   closesAt,
+  now,
 }: {
   slug: string;
   groupName: string;
@@ -56,11 +57,12 @@ export function FeedView({
   me: RiderLite;
   inviteOpen: boolean;
   closesAt: number;
+  /** Server-captured so SSR and hydration agree on "today". */
+  now: number;
 }) {
   const [length, setLength] = useState<LengthKey>("all");
   const [only, setOnly] = useState<Only>("none");
   const [sort, setSort] = useState<SortKey>("fresh");
-  const [now] = useState(() => Date.now());
   const [query, setQuery] = useState("");
   const [compact, setCompact] = useState(false);
   useEffect(() => {
@@ -79,9 +81,9 @@ export function FeedView({
   const upcoming = useMemo(
     () =>
       items
-        .filter((d) => d.status === "planned" && d.statusDate && daysUntil(rideEndDate(d)!) >= 0)
+        .filter((d) => d.status === "planned" && d.statusDate && daysUntil(rideEndDate(d)!, now) >= 0)
         .sort((a, b) => a.statusDate!.localeCompare(b.statusDate!)),
-    [items],
+    [items, now],
   );
 
   const shown = useMemo(() => {
@@ -149,7 +151,7 @@ export function FeedView({
           <h2 className="display mb-3 px-4 text-[22px] lg:px-0">Up next</h2>
           <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto px-4 lg:px-0">
             {upcoming.map((d) => {
-              const days = daysUntil(d.statusDate!);
+              const days = daysUntil(d.statusDate!, now);
               return (
                 <Link
                   key={d.id}

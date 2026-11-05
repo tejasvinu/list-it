@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { cols, fromDoc, toDoc, type Destination, type Rider } from "@/lib/db";
 import {
   endSession,
@@ -21,9 +22,10 @@ import {
   type Place,
   type RoutedPlace,
 } from "@/lib/geo";
-import { AVATAR_COLORS, AVATAR_EMOJIS, REACTIONS, STATUS_KEYS, STOP_KIND_KEYS } from "@/lib/config";
+import { AVATAR_COLORS, AVATAR_EMOJIS, REACTIONS, RIDER_LIMIT, STATUS_KEYS, STOP_KIND_KEYS } from "@/lib/config";
 import { routeSealOk, sealRoute } from "@/lib/seal";
-import { clean, cleanMultiline, inRange, validateDestination, validDate, validRideDate, validStart, type DestinationInput } from "@/lib/validate";
+import { clean, cleanMultiline, inRange, isValidId, validateDestination, validDate, validRideDate, validStart, type DestinationInput } from "@/lib/validate";
+import { allow, clientIp } from "@/lib/throttle";
 import type { Photo, StartPoint, Itinerary } from "@/lib/types";
 import { originRoute } from "@/lib/origin-routes";
 import { notify } from "@/lib/notifications";
@@ -40,8 +42,18 @@ const fail = (error: string) => ({ ok: false as const, error });
 
 async function requireRider(slug: string) {
   const ctx = await getGroupContext(slug);
-  if (!ctx.viewer) throw new Error("Sign in first");
+  // A revoked session gets the join screen straight away. Returning a structured "signed-out" result
+  // would make every caller handle the same branch, and Next's production error redaction makes a
+  // thrown error indistinguishable from a dropped connection on the client.
+  if (!ctx.viewer) redirect(`/g/${slug}`);
   return { ...ctx, viewer: ctx.viewer, log: { groupId: ctx.group.id, riderId: ctx.viewer.id } };
+}
+
+const TEN_MINUTES = 10 * 60 * 1000;
+
+/** Expensive or abusable actions share a cheap per-IP/per-rider bucket. */
+async function within(key: string, limit: number, windowMs = TEN_MINUTES) {
+  return allow(key, limit, windowMs);
 }
 
 const refresh = (slug: string) => revalidatePath(`/g/${slug}`, "layout");
@@ -54,12 +66,14 @@ export async function joinGroup(
 ): Promise<Result> {
   const ctx = await getGroupContext(slug);
   if (!ctx.registrationOpen) return fail("Joining is closed for this crew. Ask the admin to add you.");
+  if (!input || typeof input !== "object") return fail("Pick a name and a PIN first.");
+  if (!(await within(`join:${await clientIp()}`, 10))) return fail("Too many joins from this phone. Wait a few minutes.");
   const name = clean(input.name, 24);
   if (name.length < 2) return fail("Name needs at least 2 letters.");
   if (!isValidPin(input.pin)) return fail("PIN must be 4 digits.");
   if (!(AVATAR_EMOJIS as readonly string[]).includes(input.emoji)) return fail("Pick an avatar.");
   if (!(AVATAR_COLORS as readonly string[]).includes(input.color)) return fail("Pick a colour.");
-  if (ctx.riders.length >= 60) return fail("This crew is full.");
+  if (ctx.riders.length >= RIDER_LIMIT) return fail("This crew is full.");
   const nameKey = name.toLowerCase();
   const takenMsg = fail(`"${name}" is taken. If that's you, use "I'm already in".`);
   const c = await cols();
@@ -92,6 +106,12 @@ export async function joinGroup(
     if ((e as { code?: number }).code === 11000) return takenMsg;
     throw e;
   }
+  // The pre-insert count is only a fast path. Parallel joins can all pass it, so re-check after the
+  // write and back this one out if the crew crossed the cap.
+  if ((await c.riders.countDocuments({ groupId: ctx.group.id, removedAt: null })) > RIDER_LIMIT) {
+    await c.riders.deleteOne({ _id: id, groupId: ctx.group.id });
+    return fail("This crew is full.");
+  }
   await startSession(rider);
   await logActivity({ groupId: ctx.group.id, riderId: id }, "joined", null);
   refresh(slug);
@@ -100,6 +120,7 @@ export async function joinGroup(
 
 export async function signIn(slug: string, riderId: string, pin: string): Promise<Result> {
   const ctx = await getGroupContext(slug);
+  if (!isValidId(riderId)) return fail("Rider not found.");
   const rider = fromDoc<Rider>(await (await cols()).riders.findOne({ _id: riderId, groupId: ctx.group.id, removedAt: null }));
   if (!rider) return fail("Rider not found.");
   if (!isValidPin(pin)) return fail("PIN must be 4 digits.");
@@ -148,6 +169,7 @@ async function preview(ctx: Awaited<ReturnType<typeof requireRider>>, place: Pla
 
 export async function previewFromLink(slug: string, link: string): Promise<Result<{ preview: Preview }>> {
   const ctx = await requireRider(slug);
+  if (!(await within(`preview:${ctx.viewer.id}`, 30))) return fail("Too many previews. Try again in a few minutes.");
   try {
     if (typeof link !== "string" || link.length > 4000) return fail("Paste a valid Maps link.");
     if (/https?:\/\//.test(link)) {
@@ -171,6 +193,7 @@ export async function previewFromLink(slug: string, link: string): Promise<Resul
 
 export async function previewFromPlace(slug: string, place: Place): Promise<Result<{ preview: Preview }>> {
   const ctx = await requireRider(slug);
+  if (!(await within(`preview:${ctx.viewer.id}`, 60))) return fail("Too many pin moves. Try again in a few minutes.");
   if (!inRange(place?.lat, place?.lng)) return fail("That spot is too far from Bengaluru to ride.");
   return {
     ok: true,
@@ -186,7 +209,8 @@ export async function previewFromPlace(slug: string, place: Place): Promise<Resu
 }
 
 export async function searchPlacesAction(slug: string, q: string): Promise<Place[]> {
-  await requireRider(slug);
+  const ctx = await requireRider(slug);
+  if (!(await within(`search:${ctx.viewer.id}`, 60))) return [];
   try {
     return typeof q === "string" ? await searchPlaces(q.slice(0, 80)) : [];
   } catch {
@@ -216,6 +240,7 @@ function checkInput(input: DestinationInput) {
 
 export async function createDestination(slug: string, input: DestinationInput): Promise<Result<{ id: string }>> {
   const ctx = await requireRider(slug);
+  if (!(await within(`write:${ctx.viewer.id}`, 30))) return fail("Too many new rides. Try again in a few minutes.");
   const valid = checkInput(input);
   if (!valid) return fail("Something's off with that place. Try finding it again.");
   const { riddenOn, ...data } = valid;
@@ -236,7 +261,8 @@ async function ownDestination(ctx: Awaited<ReturnType<typeof requireRider>>, id:
   const row = await readRide(ctx.group.id, id);
   if (!row) throw new Error("Not found");
   // Rides from riders the admin removed would otherwise be stuck, so the crew looks after them.
-  const ownerGone = rideRef(id)?.source === "destination" && !ctx.riders.some((r) => r.id === row.riderId);
+  // This applies to legacy loops as well as destinations.
+  const ownerGone = !ctx.riders.some((r) => r.id === row.riderId);
   if (row.riderId !== ctx.viewer.id && !ownerGone) throw new Error("Only the rider who added this can change it");
   return row;
 }
@@ -290,6 +316,7 @@ export async function deleteDestination(slug: string, id: string): Promise<Resul
 
 export async function refreshPhotos(slug: string, id: string): Promise<Result<{ count: number }>> {
   const ctx = await requireRider(slug);
+  if (!(await within(`photos:${ctx.viewer.id}`, 10))) return fail("Too many photo lookups. Try again in a few minutes.");
   const row = await ownDestination(ctx, id);
   const photos = await photosNear(row);
   // Keep what's there when Commons is down, rather than wiping it.
@@ -362,6 +389,7 @@ export async function markRidden(slug: string, id: string, date: string | null):
 
 export async function addComment(slug: string, id: string, body: string): Promise<Result> {
   const ctx = await requireRider(slug);
+  if (!(await within(`comment:${ctx.viewer.id}`, 60))) return fail("Too many comments. Try again in a few minutes.");
   await visibleDestination(ctx, id);
   const text = cleanMultiline(body, 1000);
   if (!text) return fail("Say something first.");
@@ -377,6 +405,7 @@ export async function addComment(slug: string, id: string, body: string): Promis
 
 export async function deleteComment(slug: string, commentId: string, parentKey?: string): Promise<Result> {
   const ctx = await requireRider(slug);
+  if (!isValidId(commentId)) return fail("Comment not found.");
   const c = await cols();
   const ref = parentKey ? rideRef(parentKey) : null;
   if (parentKey && !ref) return fail("Comment not found.");
@@ -400,6 +429,8 @@ export async function addStop(
   input: { kind: string; name: string; note: string; link: string },
 ): Promise<Result> {
   const ctx = await requireRider(slug);
+  if (!input || typeof input !== "object") return fail("Give the stop a name.");
+  if (!(await within(`stop:${ctx.viewer.id}`, 30))) return fail("Too many stops. Try again in a few minutes.");
   await visibleDestination(ctx, id);
   const kind = STOP_KIND_KEYS.includes(input.kind as never) ? input.kind : "other";
   let name = clean(input.name, 60);
@@ -439,11 +470,13 @@ export async function addStop(
 
 export async function deleteStop(slug: string, stopId: string): Promise<Result> {
   const ctx = await requireRider(slug);
+  if (!isValidId(stopId)) return fail("Not found.");
   const c = await cols();
   const row = await c.stops.findOne({ _id: stopId });
   if (!row) return fail("Not found.");
   const dest = await visibleDestination(ctx, row.destinationId);
-  if (row.riderId !== ctx.viewer.id && dest.riderId !== ctx.viewer.id) return fail("Not yours to remove.");
+  const ownerGone = !ctx.riders.some((r) => r.id === dest.riderId);
+  if (row.riderId !== ctx.viewer.id && dest.riderId !== ctx.viewer.id && !ownerGone) return fail("Not yours to remove.");
   await c.stops.deleteOne({ _id: stopId });
   refresh(slug);
   return { ok: true };
@@ -453,6 +486,7 @@ export async function deleteStop(slug: string, stopId: string): Promise<Result> 
 
 export async function updateProfile(slug: string, input: { name: string; emoji: string; color: string }): Promise<Result> {
   const ctx = await requireRider(slug);
+  if (!input || typeof input !== "object") return fail("Pick a name and an avatar.");
   const name = clean(input.name, 24);
   if (name.length < 2) return fail("Name needs at least 2 letters.");
   if (!(AVATAR_EMOJIS as readonly string[]).includes(input.emoji)) return fail("Pick an avatar.");
@@ -474,10 +508,11 @@ export async function updateProfile(slug: string, input: { name: string; emoji: 
 
 export async function changePin(slug: string, current: string, next: string): Promise<Result> {
   const ctx = await requireRider(slug);
+  if (!isValidPin(current)) return fail("Current PIN must be 4 digits.");
   if (!isValidPin(next)) return fail("New PIN must be 4 digits.");
   const check = await verifyRiderPin(ctx.viewer, current);
   if (!check.ok) return check;
-  const sessionVersion = ctx.viewer.sessionVersion + 1;
+  const sessionVersion = (ctx.viewer.sessionVersion ?? 0) + 1;
   await (await cols()).riders.updateOne({ _id: ctx.viewer.id }, { $set: { pinHash: hashPin(next), sessionVersion } });
   // Keep this device signed in; every other device gets signed out.
   await startSession({ ...ctx.viewer, sessionVersion });
@@ -503,7 +538,8 @@ export async function saveStart(slug: string, input: StartPoint | null): Promise
 export async function fillOriginRoutes(slug: string, ids: string[]): Promise<Result<{ count: number }>> {
   const ctx = await requireRider(slug);
   if (!ctx.viewer.start) return fail("Set your start point first.");
-  if (!Array.isArray(ids) || ids.length > 3 || ids.some(id => typeof id !== "string" || id.length > 100)) return fail("Invalid rides.");
+  if (!Array.isArray(ids) || ids.length > 3 || ids.some(id => !rideRef(id))) return fail("Invalid rides.");
+  if (!(await within(`origin:${ctx.viewer.id}`, 20))) return fail("Too many distance lookups. Try again in a few minutes.");
   const rows = (await Promise.all(ids.map(id => readRide(ctx.group.id, id)))).filter((d): d is Destination => !!d);
   await Promise.all(rows.map(d => originRoute(d, ctx.viewer.start!)));
   refresh(slug);
@@ -549,7 +585,8 @@ export async function loadSuggestions(
   id: string,
 ): Promise<Result<{ stops: import("@/lib/db").SuggestedStop[] }>> {
   const ctx = await requireRider(slug);
-  if (typeof id !== "string" || !id || id.length > 80) return fail("Ride not found.");
+  if (!rideRef(id)) return fail("Ride not found.");
+  if (!(await within(`stops:${ctx.viewer.id}`, 10))) return fail("Too many stop lookups. Try again in a few minutes.");
   const row = await readRide(ctx.group.id, id);
   if (!row) return fail("Ride not found.");
   const stops = await suggestStops(row);

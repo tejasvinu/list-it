@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getGroupContext } from "@/lib/data";
 import { cols, fromDoc, toDoc, type Activity } from "@/lib/db";
 import { HOME } from "@/lib/config";
@@ -9,7 +10,8 @@ import { resolvePlace, resolveRoute, searchPlaces } from "@/lib/geo";
 import { routeLoop } from "@/lib/loop-routing";
 import { rid } from "@/lib/ids";
 import { notify } from "@/lib/notifications";
-import { cleanMultiline, inRange, validateLoop } from "@/lib/validate";
+import { cleanMultiline, inRange, isValidId, validateLoop } from "@/lib/validate";
+import { allow } from "@/lib/throttle";
 import type { Loop, LoopStop } from "@/lib/types";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -18,9 +20,11 @@ const refresh = (slug: string) => revalidatePath(`/g/${slug}`, "layout");
 
 async function context(slug: string) {
   const ctx = await getGroupContext(slug);
-  if (!ctx.viewer) throw new Error("Sign in first");
+  if (!ctx.viewer) redirect(`/g/${slug}`);
   return { ...ctx, viewer: ctx.viewer };
 }
+
+const TEN_MINUTES = 10 * 60 * 1000;
 
 async function ownedLoop(groupId: string, riderId: string, id: string) {
   return fromDoc<Loop>(await (await cols()).loops.findOne({ _id: id, groupId, riderId, deletedAt: null }));
@@ -46,8 +50,9 @@ async function activity(groupId: string, riderId: string, loopId: string, kind: 
 }
 
 export async function resolveLoopPlace(slug: string, input: string): Promise<Result<{ place: LoopStop }>> {
-  await context(slug);
+  const ctx = await context(slug);
   if (typeof input !== "string" || !input.trim() || input.length > 2000) return fail("Enter a place first.");
+  if (!(await allow(`loop-place:${ctx.viewer.id}`, 60, TEN_MINUTES))) return fail("Too many place lookups. Try again in a few minutes.");
   try {
     const place = await resolvePlace(input);
     if (!inRange(place.lat, place.lng)) return fail("That place is too far from Bengaluru.");
@@ -64,8 +69,9 @@ export async function importLoopRoute(
   slug: string,
   input: string,
 ): Promise<Result<{ places: { name: string; lat: number; lng: number }[]; skipped: string[] }>> {
-  await context(slug);
+  const ctx = await context(slug);
   if (typeof input !== "string" || !input.trim() || input.length > 4000) return fail("Paste a Maps route first.");
+  if (!(await allow(`loop-import:${ctx.viewer.id}`, 20, TEN_MINUTES))) return fail("Too many route imports. Try again in a few minutes.");
   try {
     const { places, skipped } = await resolveRoute(input);
     const near = places.filter((p) => inRange(p.lat, p.lng));
@@ -78,9 +84,10 @@ export async function importLoopRoute(
 }
 
 export async function searchLoopPlaces(slug: string, input: string): Promise<Result<{ places: LoopStop[] }>> {
-  await context(slug);
+  const ctx = await context(slug);
   if (typeof input !== "string" || input.trim().length < 2 || input.length > 80)
     return fail("Enter a place to search.");
+  if (!(await allow(`loop-search:${ctx.viewer.id}`, 60, TEN_MINUTES))) return fail("Too many searches. Try again in a few minutes.");
   try {
     const places = await searchPlaces(input);
     return {
@@ -100,7 +107,7 @@ export async function previewLoop(
   id: string | null,
 ): Promise<Result<{ routed: Awaited<ReturnType<typeof routeLoop>> }>> {
   const ctx = await context(slug);
-  if (id !== null && (typeof id !== "string" || !id || id.length > 80)) return fail("Loop not found.");
+  if (id !== null && !isValidId(id)) return fail("Loop not found.");
   const data = validateLoop(input);
   if (!data) return fail("Add a name and at least one valid stop.");
   const old = id ? await ownedLoop(ctx.group.id, ctx.viewer.id, id) : null;
@@ -113,7 +120,7 @@ export async function previewLoop(
 export async function saveLoop(slug: string, input: unknown, id: string | null): Promise<Result<{ id: string }>> {
   const ctx = await context(slug);
   if (id === null && process.env.DISABLE_NEW_ITINERARIES === "1") return fail("New itineraries are temporarily unavailable.");
-  if (id !== null && (typeof id !== "string" || !id || id.length > 80)) return fail("Loop not found.");
+  if (id !== null && !isValidId(id)) return fail("Loop not found.");
   const data = validateLoop(input);
   if (!data) return fail("Add a name and at least one valid stop, and check the date.");
   const c = await cols();
@@ -155,7 +162,7 @@ export async function saveLoop(slug: string, input: unknown, id: string | null):
 
 export async function deleteLoop(slug: string, id: string): Promise<Result> {
   const ctx = await context(slug);
-  if (typeof id !== "string" || !id || id.length > 80) return fail("Loop not found.");
+  if (!isValidId(id)) return fail("Loop not found.");
   const result = await (
     await cols()
   ).loops.updateOne(
@@ -170,7 +177,7 @@ export async function deleteLoop(slug: string, id: string): Promise<Result> {
 
 export async function toggleLoopIn(slug: string, id: string): Promise<Result> {
   const ctx = await context(slug);
-  if (typeof id !== "string" || !id || id.length > 80) return fail("Loop not found.");
+  if (!isValidId(id)) return fail("Loop not found.");
   const c = await cols();
   if (!(await c.loops.findOne({ _id: id, groupId: ctx.group.id, deletedAt: null }))) return fail("Loop not found.");
   const key = { loopId: id, riderId: ctx.viewer.id };
@@ -187,7 +194,7 @@ export async function toggleLoopIn(slug: string, id: string): Promise<Result> {
 
 export async function commentLoop(slug: string, id: string, body: string): Promise<Result> {
   const ctx = await context(slug);
-  if (typeof id !== "string" || !id || id.length > 80) return fail("Loop not found.");
+  if (!isValidId(id)) return fail("Loop not found.");
   const c = await cols();
   if (!(await c.loops.findOne({ _id: id, groupId: ctx.group.id, deletedAt: null }))) return fail("Loop not found.");
   const text = cleanMultiline(body, 1000);
@@ -208,15 +215,7 @@ export async function commentLoop(slug: string, id: string, body: string): Promi
 
 export async function deleteLoopComment(slug: string, id: string, commentId: string): Promise<Result> {
   const ctx = await context(slug);
-  if (
-    typeof id !== "string" ||
-    !id ||
-    id.length > 80 ||
-    typeof commentId !== "string" ||
-    !commentId ||
-    commentId.length > 80
-  )
-    return fail("Comment not found.");
+  if (!isValidId(id) || !isValidId(commentId)) return fail("Comment not found.");
   const c = await cols();
   if (!(await c.loops.findOne({ _id: id, groupId: ctx.group.id, deletedAt: null }))) return fail("Loop not found.");
   const result = await c.loopComments.updateOne(
@@ -230,15 +229,7 @@ export async function deleteLoopComment(slug: string, id: string, commentId: str
 
 export async function addRideToLoop(slug: string, loopId: string, destinationId: string): Promise<Result> {
   const ctx = await context(slug);
-  if (
-    typeof loopId !== "string" ||
-    !loopId ||
-    loopId.length > 80 ||
-    typeof destinationId !== "string" ||
-    !destinationId ||
-    destinationId.length > 80
-  )
-    return fail("Loop or ride not found.");
+  if (!isValidId(loopId) || !isValidId(destinationId)) return fail("Loop or ride not found.");
   const c = await cols();
   const loop = await ownedLoop(ctx.group.id, ctx.viewer.id, loopId);
   const destination = await c.destinations.findOne({ _id: destinationId, groupId: ctx.group.id, deletedAt: null });

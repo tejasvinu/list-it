@@ -3,22 +3,26 @@
 import { Binary, MongoServerError } from "mongodb";
 import { revalidatePath } from "next/cache";
 import { readRide } from "@/lib/ride-store";
-import { rideHref } from "@/lib/ride-model";
+import { rideHref, rideRef } from "@/lib/ride-model";
 import { getGroupBySlug, getViewer } from "@/lib/auth";
 import { cols, toDoc, type Upload } from "@/lib/db";
 import { rid } from "@/lib/ids";
-import { freePhotoSlot, PHOTO_CREW_LIMIT, PHOTO_MAX_BYTES, PHOTO_RIDER_LIMIT, PHOTO_THUMB_MAX_BYTES } from "@/lib/validate";
+import { freePhotoSlot, isValidId, PHOTO_CREW_BYTES_LIMIT, PHOTO_CREW_LIMIT, PHOTO_MAX_BYTES, PHOTO_RIDER_LIMIT, PHOTO_THUMB_MAX_BYTES } from "@/lib/validate";
 import { inspectPhoto } from "@/lib/photo";
+import { allow } from "@/lib/throttle";
 
 type Result = { ok: true } | { ok: false; error: string };
 
 export async function uploadPhoto(slug: string, destinationId: string, form: FormData): Promise<Result> {
-  if (typeof slug !== "string" || typeof destinationId !== "string" || !destinationId || !(form instanceof FormData)) {
+  if (typeof slug !== "string" || !rideRef(destinationId) || !(form instanceof FormData)) {
     return { ok: false, error: "That photo couldn't be uploaded." };
   }
   const group = await getGroupBySlug(slug);
   const viewer = group && await getViewer(group.id);
   if (!group || !viewer) return { ok: false, error: "Sign in to add a photo." };
+  if (!(await allow(`upload:${viewer.id}`, 20, 10 * 60 * 1000))) {
+    return { ok: false, error: "Too many photo uploads. Try again in a few minutes." };
+  }
   const photo = form.get("photo");
   const thumbnail = form.get("thumb");
   if (!(photo instanceof File) || !(thumbnail instanceof File) ||
@@ -28,11 +32,18 @@ export async function uploadPhoto(slug: string, destinationId: string, form: For
   }
   const bytes = Buffer.from(await photo.arrayBuffer());
   const thumb = Buffer.from(await thumbnail.arrayBuffer());
-  const dimensions = await inspectPhoto(bytes, thumb, photo.type);
-  if (!dimensions) return { ok: false, error: "That image has an invalid format or size." };
+  const inspected = await inspectPhoto(bytes, thumb, photo.type);
+  if (!inspected) return { ok: false, error: "That image has an invalid format or size." };
   const c = await cols();
   const destination = await readRide(group.id, destinationId);
   if (!destination) return { ok: false, error: "Ride not found." };
+  const [usage] = await c.uploads.aggregate<{ bytes: number }>([
+    { $match: { groupId: group.id } },
+    { $group: { _id: null, bytes: { $sum: { $add: [{ $binarySize: "$bytes" }, { $binarySize: "$thumb" }] } } } },
+  ]).toArray();
+  if ((usage?.bytes ?? 0) + inspected.bytes.length + inspected.thumb.length > PHOTO_CREW_BYTES_LIMIT) {
+    return { ok: false, error: "This crew has reached its photo storage limit." };
+  }
   for (let attempt = 0; attempt < PHOTO_CREW_LIMIT; attempt++) {
     const slots = await c.uploads.find({ groupId: group.id }, {
       projection: { groupSlot: 1, riderSlot: 1, destinationId: 1, riderId: 1 },
@@ -45,7 +56,8 @@ export async function uploadPhoto(slug: string, destinationId: string, form: For
     if (groupSlot === undefined) return { ok: false, error: "This crew has reached its 400 photo limit." };
     const upload: Upload = {
       id: rid(), groupId: group.id, destinationId, riderId: viewer.id,
-      mime: photo.type, ...dimensions, bytes: new Binary(bytes), thumb: new Binary(thumb),
+      mime: photo.type, width: inspected.width, height: inspected.height,
+      bytes: new Binary(inspected.bytes), thumb: new Binary(inspected.thumb),
       groupSlot, riderSlot, createdAt: new Date(),
     };
     try {
@@ -64,7 +76,7 @@ export async function uploadPhoto(slug: string, destinationId: string, form: For
 }
 
 export async function deletePhoto(slug: string, photoId: string): Promise<Result> {
-  if (typeof slug !== "string" || typeof photoId !== "string" || !photoId) return { ok: false, error: "Photo not found." };
+  if (typeof slug !== "string" || !isValidId(photoId)) return { ok: false, error: "Photo not found." };
   const group = await getGroupBySlug(slug);
   const viewer = group && await getViewer(group.id);
   if (!group || !viewer) return { ok: false, error: "Sign in to delete a photo." };
@@ -72,7 +84,9 @@ export async function deletePhoto(slug: string, photoId: string): Promise<Result
   const photo = await c.uploads.findOne({ _id: photoId, groupId: group.id }, { projection: { riderId: 1, destinationId: 1 } });
   if (!photo) return { ok: false, error: "Photo not found." };
   const destination = await readRide(group.id, photo.destinationId);
-  if (!destination || (photo.riderId !== viewer.id && destination.riderId !== viewer.id)) {
+  const ownerGone = !!destination &&
+    !(await c.riders.findOne({ _id: destination.riderId, groupId: group.id, removedAt: null }, { projection: { _id: 1 } }));
+  if (!destination || (photo.riderId !== viewer.id && destination.riderId !== viewer.id && !ownerGone)) {
     return { ok: false, error: "Only the photographer or ride owner can delete this photo." };
   }
   await c.uploads.deleteOne({ _id: photoId, groupId: group.id });

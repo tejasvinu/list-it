@@ -19,17 +19,26 @@ export async function clientIp() {
 export async function allow(key: string, limit: number, windowMs: number) {
   const now = new Date();
   const live = { $gt: ["$resetAt", now] };
-  const doc = await (await cols()).throttle.findOneAndUpdate(
-    { _id: key },
-    [
-      {
-        $set: {
-          count: { $cond: [live, { $add: ["$count", 1] }, 1] },
-          resetAt: { $cond: [live, "$resetAt", new Date(now.getTime() + windowMs)] },
-        },
-      },
-    ],
-    { upsert: true, returnDocument: "after" },
-  );
-  return (doc?.count ?? 1) <= limit;
+  const c = await cols();
+  // Two first-ever requests for the same key can race on the upsert and one may get a duplicate-key
+  // error. Retry once; the counter itself is already atomic.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const doc = await c.throttle.findOneAndUpdate(
+        { _id: key },
+        [
+          {
+            $set: {
+              count: { $cond: [live, { $add: ["$count", 1] }, 1] },
+              resetAt: { $cond: [live, "$resetAt", new Date(now.getTime() + windowMs)] },
+            },
+          },
+        ],
+        { upsert: true, returnDocument: "after" },
+      );
+      return (doc?.count ?? 1) <= limit;
+    } catch (error) {
+      if ((error as { code?: number }).code !== 11000 || attempt >= 1) throw error;
+    }
+  }
 }

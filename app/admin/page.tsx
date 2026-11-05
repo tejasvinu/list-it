@@ -25,7 +25,7 @@ export default async function AdminPage() {
 
   const c = await cols();
   const countBy = (rows: { _id: string; n: number }[]) => new Map(rows.map((r) => [r._id, r.n]));
-  const [all, riderCounts, destCounts] = await Promise.all([
+  const [all, riderCounts, destCounts, loopCounts] = await Promise.all([
     c.groups.find().sort({ createdAt: -1 }).toArray().then((xs) => xs.map((x) => fromDoc<Group>(x))),
     c.riders
       .aggregate<{ _id: string; n: number }>([{ $match: { removedAt: null } }, { $group: { _id: "$groupId", n: { $sum: 1 } } }])
@@ -33,9 +33,13 @@ export default async function AdminPage() {
     c.destinations
       .aggregate<{ _id: string; n: number }>([{ $match: { deletedAt: null } }, { $group: { _id: "$groupId", n: { $sum: 1 } } }])
       .toArray(),
+    c.loops
+      .aggregate<{ _id: string; n: number }>([{ $match: { deletedAt: null } }, { $group: { _id: "$groupId", n: { $sum: 1 } } }])
+      .toArray(),
   ]);
   const rc = countBy(riderCounts);
   const dc = countBy(destCounts);
+  for (const row of loopCounts) dc.set(row._id, (dc.get(row._id) ?? 0) + row.n);
 
   return (
     <main className="mx-auto min-h-dvh max-w-2xl px-4 py-8 lg:py-14">
