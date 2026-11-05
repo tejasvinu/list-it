@@ -2,11 +2,19 @@ import { randomBytes } from "node:crypto";
 
 const ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-/** URL-safe random id without look-alike characters. */
+const LIMIT = 256 - (256 % ALPHABET.length);
+
+/** URL-safe random id without look-alike characters. Rejection sampling keeps the alphabet unbiased. */
 export function rid(length = 12) {
-  const bytes = randomBytes(length);
   let out = "";
-  for (let i = 0; i < length; i++) out += ALPHABET[bytes[i] % ALPHABET.length];
+  while (out.length < length) {
+    for (const byte of randomBytes(length * 2)) {
+      if (byte < LIMIT) {
+        out += ALPHABET[byte % ALPHABET.length];
+        if (out.length === length) break;
+      }
+    }
+  }
   return out;
 }
 

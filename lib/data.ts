@@ -13,6 +13,9 @@ import { readRide } from "./ride-store";
 import type { WeatherDay } from "./weather-types";
 export type { RiderLite };
 
+/** One stable timestamp per server render, so client components hydrate with the same "today". */
+export const requestNow = cache(() => Date.now());
+
 export const lite = (r: Rider): RiderLite => ({ id: r.id, name: r.name, emoji: r.emoji, color: r.color, start: r.start ?? null });
 
 const ghost: RiderLite = { id: "", name: "Former rider", emoji: "👻", color: "#52525b" };
@@ -59,7 +62,18 @@ export type FeedItem = Destination & {
   stopCount: number;
 };
 
-async function hydrate(rows: Destination[], groupRiders: RiderLite[], viewerId: string | null) {
+/** Feed cards and the crew map only need the shape, not every stored point. */
+function thinRoute(route: [number, number][]) {
+  const max = 160;
+  if (route.length <= max) return route;
+  const step = Math.ceil(route.length / max);
+  const out = route.filter((_, index) => index % step === 0);
+  const last = route.at(-1);
+  if (last && out.at(-1) !== last) out.push(last);
+  return out;
+}
+
+async function hydrate(rows: Destination[], groupRiders: RiderLite[], viewerId: string | null, thinRoutes = false) {
   if (!rows.length) return [];
   const ids = rows.map((d) => d.id);
   const loopIds = ids.flatMap(id => { const ref = rideRef(id); return ref?.source === "loop" ? [ref.id] : []; });
@@ -100,9 +114,19 @@ async function hydrate(rows: Destination[], groupRiders: RiderLite[], viewerId: 
     const myRides = rd.filter((r) => r.destinationId === d.id);
     return {
       ...d,
+      ...(thinRoutes
+        ? {
+            route: thinRoute(d.route),
+            ...(d.itinerary
+              ? { itinerary: { ...d.itinerary, legs: d.itinerary.legs.map((leg) => ({ ...leg, route: thinRoute(leg.route) })) } }
+              : {}),
+          }
+        : {}),
       owner: who(d.riderId),
       ownerGone: !byId.has(d.riderId),
-      canEdit: d.riderId === viewerId || (ref.source === "destination" && !byId.has(d.riderId)),
+      // Removed owners leave their rides behind. Anyone in the crew can look after them, whether the
+      // record is a destination or a legacy loop.
+      canEdit: d.riderId === viewerId || !byId.has(d.riderId),
       reactions: myRx.map((r) => ({ emoji: r.emoji, rider: who(r.riderId) })),
       myReaction: myRx.find((r) => r.riderId === viewerId)?.emoji ?? null,
       interested: myIns.map((i) => who(i.riderId)),
@@ -125,7 +149,7 @@ export async function getFeed(ctx: GroupContext) {
   ]);
   const rows = [...destinations.map(row => fromDoc<Destination>(row)), ...loops.map(row => normalizeLoop(fromDoc<Loop>(row)))];
   rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  return hydrate(rows, ctx.riders, ctx.viewer?.id ?? null);
+  return hydrate(rows, ctx.riders, ctx.viewer?.id ?? null, true);
 }
 
 /** Rides added and ridden per rider, without loading every route. */

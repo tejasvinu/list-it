@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    env:
+      # Build-time placeholders. The static pages do not connect to a database.
+      MONGODB_URI: mongodb://localhost:27017
+      MONGODB_DB: list-it-ci
+      SESSION_SECRET: ci-session-secret-not-used-for-real-data
+      ADMIN_SECRET: ci-admin-secret-not-used-for-real-data
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build

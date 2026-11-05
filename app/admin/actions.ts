@@ -6,7 +6,9 @@ import { cols, toDoc, type Group, type Rider } from "@/lib/db";
 import { adminLoginAllowed, adminSecretMatches, endAdminSession, hashPin, isAdmin, isValidPin, startAdminSession } from "@/lib/auth";
 import { groupSlug, rid } from "@/lib/ids";
 import { logActivity } from "@/lib/data";
-import { refreshRoute } from "@/lib/reroute";
+import { refreshLoop, refreshRoute } from "@/lib/reroute";
+import { isValidId } from "@/lib/validate";
+import { rideRef } from "@/lib/ride-model";
 import { AVATAR_COLORS, AVATAR_EMOJIS, REGISTRATION_DAYS } from "@/lib/config";
 
 async function guard() {
@@ -44,6 +46,7 @@ export async function createGroup(form: FormData) {
 
 export async function renameGroup(groupId: string, form: FormData) {
   await guard();
+  if (!isValidId(groupId)) return;
   const name = String(form.get("name") ?? "").trim().slice(0, 60);
   if (name) await (await cols()).groups.updateOne({ _id: groupId }, { $set: { name } });
   revalidatePath("/admin", "layout");
@@ -51,6 +54,7 @@ export async function renameGroup(groupId: string, form: FormData) {
 
 export async function setRegistration(groupId: string, open: boolean) {
   await guard();
+  if (!isValidId(groupId)) return;
   const c = await cols();
   const group = await c.groups.findOne({ _id: groupId });
   if (!group) return;
@@ -67,6 +71,7 @@ const resetFields = (pin: string) => ({
 
 export async function addRider(groupId: string, _: string | null, form: FormData) {
   await guard();
+  if (!isValidId(groupId)) return "Crew not found.";
   const name = String(form.get("name") ?? "").replace(/\s+/g, " ").trim().slice(0, 24);
   const pin = String(form.get("pin") ?? "");
   if (name.length < 2) return "Name needs 2+ letters.";
@@ -107,6 +112,7 @@ export async function addRider(groupId: string, _: string | null, form: FormData
 
 export async function resetPin(riderId: string, _: string | null, form: FormData) {
   await guard();
+  if (!isValidId(riderId)) return "Rider not found.";
   const pin = String(form.get("pin") ?? "");
   if (!isValidPin(pin)) return "4 digits.";
   await (await cols()).riders.updateOne({ _id: riderId }, resetFields(pin));
@@ -116,19 +122,25 @@ export async function resetPin(riderId: string, _: string | null, form: FormData
 
 export async function removeRider(riderId: string) {
   await guard();
+  if (!isValidId(riderId)) return;
   await (await cols()).riders.updateOne({ _id: riderId }, { $set: { removedAt: new Date() }, $inc: { sessionVersion: 1 } });
   revalidatePath("/admin", "layout");
 }
 
 export async function refreshRoutes(groupId: string, ids: string[]) {
   await guard();
-  if (typeof groupId !== "string" || groupId.length > 100 || !Array.isArray(ids) || ids.length > 3 || ids.some((id) => typeof id !== "string" || id.length > 100)) {
+  if (!isValidId(groupId) || !Array.isArray(ids) || ids.length > 3 || ids.some((id) => !rideRef(id))) {
     return { ok: false as const, error: "Invalid rides." };
   }
   const c = await cols();
   if (!(await c.groups.findOne({ _id: groupId }))) return { ok: false as const, error: "Crew not found." };
-  const rows = await c.destinations.find({ _id: { $in: ids }, groupId, deletedAt: null }).toArray();
-  const results = await Promise.all(rows.map(refreshRoute));
+  const destIds = ids.filter((id) => !id.startsWith("loop:"));
+  const loopIds = ids.filter((id) => id.startsWith("loop:")).map((id) => id.slice(5));
+  const [rows, loops] = await Promise.all([
+    c.destinations.find({ _id: { $in: destIds }, groupId, deletedAt: null }).toArray(),
+    c.loops.find({ _id: { $in: loopIds }, groupId, deletedAt: null }).toArray(),
+  ]);
+  const results = await Promise.all([...rows.map(refreshRoute), ...loops.map(refreshLoop)]);
   revalidatePath("/admin", "layout");
   return { ok: true as const, updated: results.filter(Boolean).length, attempted: ids.length };
 }

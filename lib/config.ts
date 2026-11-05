@@ -27,6 +27,8 @@ export const START_AREAS = [
 ] as const;
 
 export const REGISTRATION_DAYS = 3;
+/** Hard cap on a crew. Enforced on join; the admin UI should stay below it too. */
+export const RIDER_LIMIT = 60;
 
 export const CATEGORIES = {
   short: { label: "Short ride", short: "Short", hint: "Breakfast run, back by lunch", color: "#13a189" },

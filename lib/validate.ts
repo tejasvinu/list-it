@@ -13,6 +13,14 @@ const num = (n: unknown): n is number => typeof n === "number" && Number.isFinit
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
+// Runtime checks for values that reach MongoDB. TypeScript annotations do not protect server actions,
+// so a client can otherwise send a query operator where an ID is expected.
+const ID = /^[A-Za-z0-9_-]{1,80}$/;
+const GROUP_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const isValidId = (value: unknown): value is string => typeof value === "string" && ID.test(value);
+export const isValidGroupSlug = (value: unknown): value is string =>
+  typeof value === "string" && value.length <= 80 && GROUP_SLUG.test(value);
+
 /** Roughly India plus its neighbours. Rides start in Bengaluru, so anything outside is a bad pin. */
 export function inRange(lat: unknown, lng: unknown) {
   return num(lat) && num(lng) && lat >= 5 && lat <= 37 && lng >= 66 && lng <= 98;
@@ -205,6 +213,8 @@ export const PHOTO_MAX_BYTES = 600 * 1024;
 export const PHOTO_THUMB_MAX_BYTES = 150 * 1024;
 export const PHOTO_CREW_LIMIT = 400;
 export const PHOTO_RIDER_LIMIT = 6;
+/** A byte ceiling as well as a photo count: 400 × 750 KB would fill a free Atlas cluster. */
+export const PHOTO_CREW_BYTES_LIMIT = 200 * 1024 * 1024;
 
 export function validPhotoDimensions(width: number, height: number, max: number) {
   return Number.isInteger(width) && Number.isInteger(height) && width > 0 && height > 0 && Math.max(width, height) <= max;

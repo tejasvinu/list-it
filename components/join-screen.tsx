@@ -33,6 +33,7 @@ export function JoinScreen({
   destinationCount,
   open,
   closesAt,
+  now,
   hero,
 }: {
   slug: string;
@@ -41,6 +42,8 @@ export function JoinScreen({
   destinationCount: number;
   open: boolean;
   closesAt: number;
+  /** Server-captured so SSR and hydration agree on the countdown. */
+  now: number;
   hero: React.ReactNode;
 }) {
   const router = useRouter();
@@ -53,7 +56,6 @@ export function JoinScreen({
   const [entering, enter] = useTransition();
   const [nameError, setNameError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [now] = useState(() => Date.now());
 
   const done = () => enter(() => router.refresh());
 

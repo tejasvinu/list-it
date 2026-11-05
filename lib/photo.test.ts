@@ -11,12 +11,18 @@ async function image(width: number, height: number, format: "jpeg" | "webp" = "w
 test("photo validation checks actual image formats and dimensions", async () => {
   const full = await image(800, 600);
   const thumb = await image(400, 300);
-  assert.deepEqual(await inspectPhoto(full, thumb, "image/webp"), { width: 800, height: 600 });
+  const webp = await inspectPhoto(full, thumb, "image/webp");
+  assert.equal(webp?.width, 800);
+  assert.equal(webp?.height, 600);
+  assert.ok(webp?.bytes.length && webp.thumb.length);
+  assert.equal((await sharp(webp!.bytes).metadata()).exif, undefined);
   assert.equal(await inspectPhoto(full, thumb, "image/jpeg"), null);
   assert.equal(await inspectPhoto(full, await image(400, 200), "image/webp"), null);
   assert.equal(await inspectPhoto(await image(1601, 10), await image(400, 2), "image/webp"), null);
   assert.equal(await inspectPhoto(full.subarray(0, 20), thumb, "image/webp"), null);
-  assert.deepEqual(await inspectPhoto(await image(50, 60, "jpeg"), await image(50, 60, "jpeg"), "image/jpeg"), { width: 50, height: 60 });
+  const jpeg = await inspectPhoto(await image(50, 60, "jpeg"), await image(50, 60, "jpeg"), "image/jpeg");
+  assert.equal(jpeg?.width, 50);
+  assert.equal(jpeg?.height, 60);
   assert.equal(validPhotoDimensions(0, 10, 1600), false);
   assert.equal(validPhotoDimensions(100.5, 10, 1600), false);
 });

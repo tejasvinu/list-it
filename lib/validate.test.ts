@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { daysUntil, todayYmd } from "./format";
-import { cleanRoadSplit, inRange, isGoogleMapsHost, mapsUrlOk, validateDestination, validDate, validRideDate, validStart } from "./validate";
+import { cleanRoadSplit, inRange, isGoogleMapsHost, isValidGroupSlug, isValidId, mapsUrlOk, validateDestination, validDate, validRideDate, validStart } from "./validate";
 
 const base = {
   name: "  Nandi   Hills ",
@@ -76,6 +76,17 @@ test("isGoogleMapsHost matches Google exactly", () => {
   }
   assert.ok(!mapsUrlOk("http://www.google.com/maps"));
   assert.ok(!mapsUrlOk("javascript:alert(1)"));
+});
+
+test("server-action ids and slugs are plain strings", () => {
+  assert.equal(isValidId("Abc123_-"), true);
+  assert.equal(isValidId("loop:Abc123"), false);
+  assert.equal(isValidId({ $ne: null }), false);
+  assert.equal(isValidId("a".repeat(81)), false);
+  assert.equal(isValidGroupSlug("weekend-morning-rides-a1b2c3d4e5"), true);
+  assert.equal(isValidGroupSlug("Crew-Upper"), false);
+  assert.equal(isValidGroupSlug("crew--double"), false);
+  assert.equal(isValidGroupSlug({ $ne: null }), false);
 });
 
 test("inRange and cleanRoadSplit", () => {

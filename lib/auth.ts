@@ -5,6 +5,7 @@ import { createHash, createHmac, randomBytes, scrypt, scryptSync, timingSafeEqua
 import { promisify } from "node:util";
 import { cols, fromDoc, type Group, type Rider } from "./db";
 import { allow, clientIp } from "./throttle";
+import { isValidGroupSlug } from "./validate";
 
 const MAX_FAILS = 5;
 const LOCK_MS = 10 * 60 * 1000;
@@ -63,10 +64,12 @@ const lockedMessage = (until: Date) => {
  * (10 min, 1 h, 6 h, then a day), so a fixed 10-minute lock can't be waited out over and over to walk all
  * 10,000 PINs. A correct PIN resets the run. Null when someone else already locked or unlocked them.
  */
-async function lockRider(id: string, filter: object, now: Date) {
+async function lockRider(id: string, now: Date) {
   const c = await cols();
+  // The filter is part of the guarantee: only one request can turn a full count into a lock. Without
+  // it, a burst of parallel guesses can increment lockouts twice and skip a whole escalation step.
   const doc = await c.riders.findOneAndUpdate(
-    { _id: id, ...filter },
+    { _id: id, failedAttempts: { $gte: MAX_FAILS }, $or: [{ lockedUntil: null }, { lockedUntil: { $lte: now } }] },
     [
       { $set: { failedAttempts: 0, lockouts: { $add: [{ $ifNull: ["$lockouts", 0] }, 1] } } },
       {
@@ -92,24 +95,28 @@ export async function verifyRiderPin(rider: Rider, pin: string): Promise<PinChec
   }
   const c = await cols();
   const now = new Date();
+  // Lock once per run. If another request won the race, report the lock it created instead of adding
+  // another escalation.
+  const lockResult = async (): Promise<PinCheck> => {
+    const until = await lockRider(rider.id, now);
+    const current = await c.riders.findOne({ _id: rider.id }, { projection: { failedAttempts: 1, lockedUntil: 1 } });
+    if (until) return { ok: false, error: lockedMessage(until) };
+    if (current?.lockedUntil && current.lockedUntil.getTime() > now.getTime()) {
+      return { ok: false, error: lockedMessage(current.lockedUntil) };
+    }
+    // A parallel correct PIN reset the run, so this wrong guess is just a wrong PIN.
+    if (current && current.failedAttempts < MAX_FAILS) return { ok: false, error: "Wrong PIN." };
+    return { ok: false, error: lockedMessage(new Date(now.getTime() + LOCK_MS)) };
+  };
   const open = { _id: rider.id, failedAttempts: { $lt: MAX_FAILS }, $or: [{ lockedUntil: null }, { lockedUntil: { $lte: now } }] };
   const claimed = await c.riders.findOneAndUpdate(open, { $inc: { failedAttempts: 1 } }, { returnDocument: "after" });
-  if (!claimed) {
-    // Either locked, or every attempt is spoken for. Turn a full count into a lock (it also heals a count
-    // left behind by a request that died before it could set one).
-    const until = await lockRider(rider.id, { failedAttempts: { $gte: MAX_FAILS }, $or: [{ lockedUntil: null }, { lockedUntil: { $lte: now } }] }, now);
-    const current = until ?? (await c.riders.findOne({ _id: rider.id }, { projection: { lockedUntil: 1 } }))?.lockedUntil;
-    return { ok: false, error: lockedMessage(current ?? new Date(now.getTime() + LOCK_MS)) };
-  }
+  if (!claimed) return lockResult();
   if (await pinMatches(pin, claimed.pinHash)) {
     await c.riders.updateOne({ _id: rider.id }, { $set: { failedAttempts: 0, lockedUntil: null, lockouts: 0 } });
     return { ok: true };
   }
   const fails = claimed.failedAttempts;
-  if (fails >= MAX_FAILS) {
-    const until = await lockRider(rider.id, {}, new Date());
-    return { ok: false, error: lockedMessage(until ?? new Date(Date.now() + LOCK_MS)) };
-  }
+  if (fails >= MAX_FAILS) return lockResult();
   return { ok: false, error: `Wrong PIN. ${MAX_FAILS - fails} ${MAX_FAILS - fails === 1 ? "try" : "tries"} left.` };
 }
 
@@ -133,6 +140,9 @@ export async function endSession(groupId: string) {
 }
 
 export const getGroupBySlug = cache(async (slug: string): Promise<Group | null> => {
+  // Server actions receive runtime values, not TypeScript types. Refuse anything that could be read as
+  // a Mongo query operator instead of letting it reach `findOne`.
+  if (!isValidGroupSlug(slug)) return null;
   return fromDoc<Group>(await (await cols()).groups.findOne({ slug }));
 });
 

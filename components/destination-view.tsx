@@ -216,7 +216,7 @@ export function DestinationView({ d, slug, me, riders, originSlot, weatherSlot, 
 
         <section className="mt-10">
           <SectionTitle>Photos</SectionTitle>
-          <RiderPhotos photos={d.uploads} commons={d.photos} slug={slug} destinationId={d.id} destinationName={d.name} ownerId={d.owner.id} meId={me.id} allowUpload />
+          <RiderPhotos photos={d.uploads} commons={d.photos} slug={slug} destinationId={d.id} destinationName={d.name} ownerId={d.canEdit ? me.id : d.owner.id} meId={me.id} allowUpload />
         </section>
 
         <Stops d={d} slug={slug} me={me} suggestions={suggestions} setSuggestions={setSuggestions} />
@@ -384,7 +384,7 @@ function Stops({
         <ol className="relative space-y-1 pl-5 before:absolute before:bottom-4 before:left-[7px] before:top-4 before:w-[2px] before:bg-line-strong">
           {d.stops.map((s) => {
             const k = STOP_KINDS[(s.kind in STOP_KINDS ? s.kind : "other") as StopKind];
-            const canDelete = s.riderId === me.id || d.owner.id === me.id;
+            const canDelete = s.riderId === me.id || d.canEdit;
             return (
               <li key={s.id} className="relative flex gap-3 rounded-panel py-2.5 pl-3">
                 <span

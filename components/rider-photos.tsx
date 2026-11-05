@@ -9,6 +9,7 @@ import type { Photo } from "@/lib/types";
 import { attempt, toast } from "./toast";
 
 type Upload = DestinationDetail["uploads"][number];
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function canvasBlob(canvas: HTMLCanvasElement, mime: string, quality: number) {
   return new Promise<Blob>((resolve, reject) => {
@@ -71,13 +72,35 @@ export function RiderPhotos({ photos, commons = [], slug, destinationId, destina
   const touchStart = useRef<number | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const close = useRef<HTMLButtonElement>(null);
+  const dialog = useRef<HTMLDivElement>(null);
   const selectedPhoto = selected === null ? null : photos[selected];
   const isOpen = selected !== null;
   useEffect(() => {
     if (!isOpen) return;
     const previous = document.activeElement as HTMLElement | null;
-    close.current?.focus();
-    return () => previous?.focus();
+    const raf = requestAnimationFrame(() => close.current?.focus());
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || !dialog.current) return;
+      const items = [...dialog.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      if (!items.length) return;
+      const [first, last] = [items[0], items[items.length - 1]];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (!dialog.current.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("keydown", onKey);
+      if (previous?.isConnected) previous.focus();
+    };
   }, [isOpen]);
   useEffect(() => {
     if (selected === null) return;
@@ -144,6 +167,7 @@ export function RiderPhotos({ photos, commons = [], slug, destinationId, destina
       </a>)}
     </div>}
     {selectedPhoto && selected !== null && <div
+      ref={dialog}
       role="dialog"
       aria-modal="true"
       aria-label="Rider photo"
